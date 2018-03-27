@@ -103,6 +103,8 @@ public class NSClientService extends Service {
 
     public static UploadQueue uploadQueue = new UploadQueue();
 
+    private TransportServiceInterface transportService = null;
+
     public NSClientService() {
         registerBus();
         if (handler == null) {
@@ -195,8 +197,9 @@ public class NSClientService extends Service {
 
     public void initialize() {
         dataCounter = 0;
-
         readPreferences();
+
+        getTransportService().initialize();
 
         if (!nsAPISecret.equals(""))
             nsAPIhashCode = Hashing.sha1().hashString(nsAPISecret, Charsets.UTF_8).toString();
@@ -235,6 +238,14 @@ public class NSClientService extends Service {
         }
     }
 
+    private TransportServiceInterface getTransportService() {
+        if (transportService == null)
+        {
+            transportService = new WebsocketTransportService();
+        }
+        return transportService;
+    }
+
     private Emitter.Listener onConnect = new Emitter.Listener() {
         @Override
         public void call(Object... args) {
@@ -252,6 +263,9 @@ public class NSClientService extends Service {
     };
 
     public void destroy() {
+
+        getTransportService().destroy();
+
         if (mSocket != null) {
             mSocket.off(Socket.EVENT_CONNECT);
             mSocket.off(Socket.EVENT_DISCONNECT);
@@ -751,6 +765,9 @@ public class NSClientService extends Service {
     }
 
     public void resend(final String reason) {
+
+        getTransportService().resend(reason);
+
         if (UploadQueue.size() == 0)
             return;
 
@@ -804,6 +821,7 @@ public class NSClientService extends Service {
     }
 
     public void restart() {
+        getTransportService().restart();
         destroy();
         initialize();
     }
