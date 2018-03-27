@@ -20,8 +20,10 @@ import info.nightscout.androidaps.data.ProfileStore;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
 import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSAuthAck;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastAlarm;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastAnnouncement;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastCals;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastClearAlarm;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastDeviceStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastFood;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastMbgs;
@@ -29,6 +31,7 @@ import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastP
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastSgvs;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastTreatment;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastUrgentAlarm;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSConfiguration;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSSettingsStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSSgv;
@@ -120,9 +123,9 @@ public class WebsocketTransportService implements TransportServiceInterface {
                 mSocket.connect();
                 mSocket.on("dataUpdate", onDataUpdate);
                 mSocket.on("announcement", onAnnouncement);
-                //mSocket.on("alarm", onAlarm);
-                //mSocket.on("urgent_alarm", onUrgentAlarm);
-                //mSocket.on("clear_alarm", onClearAlarm);
+                mSocket.on("alarm", onAlarm);
+                mSocket.on("urgent_alarm", onUrgentAlarm);
+                mSocket.on("clear_alarm", onClearAlarm);
             } catch (URISyntaxException | RuntimeException e) {
                 MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "Wrong URL syntax"));
                 MainApp.bus().post(new EventNSClientStatus("Wrong URL syntax"));
@@ -455,6 +458,91 @@ public class WebsocketTransportService implements TransportServiceInterface {
                     FabricPrivacy.logException(e);
                 }
             BroadcastAnnouncement.handleAnnouncement(data, mNSClientService.getApplicationContext());
+            log.debug(data.toString());
+        }
+    };
+
+    private Emitter.Listener onAlarm = new Emitter.Listener() {
+        /*
+        {
+        "level":1,
+        "title":"Warning HIGH",
+        "message":"BG Now: 5 -0.2 → mmol\/L\nRaw BG: 4.8 mmol\/L Čistý\nBG 15m: 4.8 mmol\/L\nIOB: -0.02U\nCOB: 0g",
+        "eventName":"high",
+        "plugin":{"name":"simplealarms","label":"Simple Alarms","pluginType":"notification","enabled":true},
+        "pushoverSound":"climb",
+        "debug":{"lastSGV":5,"thresholds":{"bgHigh":180,"bgTargetTop":75,"bgTargetBottom":72,"bgLow":70}},
+        "group":"default",
+        "key":"simplealarms_1"
+        }
+         */
+        @Override
+        public void call(final Object... args) {
+            if (Config.detailedLog)
+                MainApp.bus().post(new EventNSClientNewLog("ALARM", "received"));
+            JSONObject data;
+            try {
+                data = (JSONObject) args[0];
+            } catch (Exception e) {
+                FabricPrivacy.log("Wrong alarm from NS: " + args[0]);
+                return;
+            }
+            BroadcastAlarm.handleAlarm(data, mNSClientService.getApplicationContext());
+            log.debug(data.toString());
+        }
+    };
+
+    private Emitter.Listener onUrgentAlarm = new Emitter.Listener() {
+        /*
+        {
+        "level":2,
+        "title":"Urgent HIGH",
+        "message":"BG Now: 5.2 -0.1 → mmol\/L\nRaw BG: 5 mmol\/L Čistý\nBG 15m: 5 mmol\/L\nIOB: 0.00U\nCOB: 0g",
+        "eventName":"high",
+        "plugin":{"name":"simplealarms","label":"Simple Alarms","pluginType":"notification","enabled":true},
+        "pushoverSound":"persistent",
+        "debug":{"lastSGV":5.2,"thresholds":{"bgHigh":80,"bgTargetTop":75,"bgTargetBottom":72,"bgLow":70}},
+        "group":"default",
+        "key":"simplealarms_2"
+        }
+         */
+        @Override
+        public void call(final Object... args) {
+            JSONObject data;
+            try {
+                data = (JSONObject) args[0];
+            } catch (Exception e) {
+                FabricPrivacy.log("Wrong Urgent alarm from NS: " + args[0]);
+                return;
+            }
+            if (Config.detailedLog)
+                MainApp.bus().post(new EventNSClientNewLog("URGENTALARM", "received"));
+            BroadcastUrgentAlarm.handleUrgentAlarm(data, mNSClientService.getApplicationContext());
+            log.debug(data.toString());
+        }
+    };
+
+    private Emitter.Listener onClearAlarm = new Emitter.Listener() {
+        /*
+        {
+        "clear":true,
+        "title":"All Clear",
+        "message":"default - Urgent was ack'd",
+        "group":"default"
+        }
+         */
+        @Override
+        public void call(final Object... args) {
+            JSONObject data;
+            try {
+                data = (JSONObject) args[0];
+            } catch (Exception e) {
+                FabricPrivacy.log("Wrong Urgent alarm from NS: " + args[0]);
+                return;
+            }
+            if (Config.detailedLog)
+                MainApp.bus().post(new EventNSClientNewLog("CLEARALARM", "received"));
+            BroadcastClearAlarm.handleClearAlarm(data, mNSClientService.getApplicationContext());
             log.debug(data.toString());
         }
     };
