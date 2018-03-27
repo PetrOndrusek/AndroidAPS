@@ -13,6 +13,5 @@ public interface TransportServiceInterface {
 
     void initialize();
     void destroy();
-    void restart();
     void resend(final String reason);
 }

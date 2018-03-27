@@ -52,6 +52,7 @@ import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastS
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastTreatment;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastUrgentAlarm;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.AlarmAck;
+import info.nightscout.androidaps.plugins.NSClientInternal.data.NSConfiguration;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSSettingsStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSSgv;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSTreatment;
@@ -89,11 +90,7 @@ public class NSClientService extends Service {
     public static String nightscoutVersionName = "";
     public static Integer nightscoutVersionCode = 0;
 
-    private boolean nsEnabled = false;
-    static public String nsURL = "";
-    private String nsAPISecret = "";
-    private String nsDevice = "";
-    private Integer nsHours = 48;
+    public NSConfiguration nsConfig = new NSConfiguration();
 
     public long lastResendTime = 0;
 
@@ -182,7 +179,7 @@ public class NSClientService extends Service {
 
     @Subscribe
     public void onStatusEvent(EventConfigBuilderChange ev) {
-        if (nsEnabled != MainApp.getSpecificPlugin(NSClientPlugin.class).isEnabled(PluginBase.GENERAL)) {
+        if (nsConfig.enabled != MainApp.getSpecificPlugin(NSClientPlugin.class).isEnabled(PluginBase.GENERAL)) {
             latestDateInReceivedData = 0;
             destroy();
             initialize();
@@ -197,27 +194,27 @@ public class NSClientService extends Service {
 
     public void initialize() {
         dataCounter = 0;
-        readPreferences();
+        nsConfig = readPreferences();
 
         getTransportService().initialize();
 
-        if (!nsAPISecret.equals(""))
-            nsAPIhashCode = Hashing.sha1().hashString(nsAPISecret, Charsets.UTF_8).toString();
+        if (!nsConfig.apiSecret.equals(""))
+            nsAPIhashCode = Hashing.sha1().hashString(nsConfig.apiSecret, Charsets.UTF_8).toString();
 
         MainApp.bus().post(new EventNSClientStatus("Initializing"));
         if (MainApp.getSpecificPlugin(NSClientPlugin.class).paused) {
             MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "paused"));
             MainApp.bus().post(new EventNSClientStatus("Paused"));
-        } else if (!nsEnabled) {
+        } else if (!nsConfig.enabled) {
             MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "disabled"));
             MainApp.bus().post(new EventNSClientStatus("Disabled"));
-        } else if (!nsURL.equals("")) {
+        } else if (!nsConfig.url.equals("")) {
             try {
                 MainApp.bus().post(new EventNSClientStatus("Connecting ..."));
                 IO.Options opt = new IO.Options();
                 opt.forceNew = true;
                 opt.reconnection = true;
-                mSocket = IO.socket(nsURL, opt);
+                mSocket = IO.socket(nsConfig.url, opt);
                 mSocket.on(Socket.EVENT_CONNECT, onConnect);
                 mSocket.on(Socket.EVENT_DISCONNECT, onDisconnect);
                 mSocket.on(Socket.EVENT_PING, onPing);
@@ -241,7 +238,12 @@ public class NSClientService extends Service {
     private TransportServiceInterface getTransportService() {
         if (transportService == null)
         {
-            transportService = new WebsocketTransportService();
+            if (nsConfig.restEnabled) {
+                transportService = new WebsocketTransportService(nsConfig);  // REST variant in the future
+            }
+            else {
+                transportService = new WebsocketTransportService(nsConfig);
+            }
         }
         return transportService;
     }
@@ -265,6 +267,7 @@ public class NSClientService extends Service {
     public void destroy() {
 
         getTransportService().destroy();
+        transportService = null;
 
         if (mSocket != null) {
             mSocket.off(Socket.EVENT_CONNECT);
@@ -288,8 +291,8 @@ public class NSClientService extends Service {
     public void sendAuthMessage(NSAuthAck ack) {
         JSONObject authMessage = new JSONObject();
         try {
-            authMessage.put("client", "Android_" + nsDevice);
-            authMessage.put("history", nsHours);
+            authMessage.put("client", "Android_" + nsConfig.device);
+            authMessage.put("history", nsConfig.hours);
             authMessage.put("status", true); // receive status
             authMessage.put("from", latestDateInReceivedData); // send data newer than
             authMessage.put("secret", nsAPIhashCode);
@@ -326,11 +329,13 @@ public class NSClientService extends Service {
         }
     }
 
-    public void readPreferences() {
-        nsEnabled = MainApp.getSpecificPlugin(NSClientPlugin.class).isEnabled(PluginBase.GENERAL);
-        nsURL = SP.getString(R.string.key_nsclientinternal_url, "");
-        nsAPISecret = SP.getString(R.string.key_nsclientinternal_api_secret, "");
-        nsDevice = SP.getString("careportal_enteredby", "");
+    public NSConfiguration readPreferences() {
+        NSConfiguration conf = new NSConfiguration();
+        conf.enabled = MainApp.getSpecificPlugin(NSClientPlugin.class).isEnabled(PluginBase.GENERAL);
+        conf.url = SP.getString(R.string.key_nsclientinternal_url, "");
+        conf.apiSecret = SP.getString(R.string.key_nsclientinternal_api_secret, "");
+        conf.device = SP.getString("careportal_enteredby", "");
+        return conf;
     }
 
     private Emitter.Listener onPing = new Emitter.Listener() {
@@ -755,7 +760,7 @@ public class NSClientService extends Service {
 
     private boolean isCurrent(NSTreatment treatment) {
         long now = (new Date()).getTime();
-        long minPast = now - nsHours * 60L * 60 * 1000;
+        long minPast = now - nsConfig.hours * 60L * 60 * 1000;
         if (treatment.getMills() == null) {
             log.debug("treatment.getMills() == null " + treatment.getData().toString());
             return false;
@@ -821,7 +826,6 @@ public class NSClientService extends Service {
     }
 
     public void restart() {
-        getTransportService().restart();
         destroy();
         initialize();
     }

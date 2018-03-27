@@ -225,7 +225,13 @@ public class NSClientPlugin implements PluginBase {
     }
 
     public String url() {
-        return NSClientService.nsURL;
+        if (nsClientService != null) {
+            return nsClientService.nsConfig.url;
+        }
+        else
+        {
+            return "";
+        }
     }
 
     public boolean hasWritePermission() {
