@@ -20,6 +20,7 @@ import info.nightscout.androidaps.data.ProfileStore;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
 import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSAuthAck;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastAnnouncement;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastCals;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastDeviceStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastFood;
@@ -37,6 +38,7 @@ import info.nightscout.androidaps.plugins.NSClientInternal.events.EventNSClientS
 import info.nightscout.androidaps.plugins.Overview.events.EventDismissNotification;
 import info.nightscout.androidaps.plugins.Overview.notifications.Notification;
 import info.nightscout.utils.DateUtil;
+import info.nightscout.utils.FabricPrivacy;
 import info.nightscout.utils.JsonHelper;
 import io.socket.client.IO;
 import io.socket.client.Socket;
@@ -59,7 +61,8 @@ public class WebsocketTransportService implements TransportServiceInterface {
     private ProfileStore profileStore;
     private static Integer dataCounter = 0;
     private static Integer connectCounter = 0;
-    public long latestDateInReceivedData = 0;
+    private long latestDateInReceivedData = 0;
+    private NSClientService mNSClientService = null;
 
     @Override
     public boolean isConnected() {
@@ -82,10 +85,11 @@ public class WebsocketTransportService implements TransportServiceInterface {
     }
 
 
-    public WebsocketTransportService(NSConfiguration nsConfig)
+    public WebsocketTransportService(NSConfiguration nsConfig, NSClientService nsClientService)
     {
         registerBus();
         this.nsConfig = nsConfig;
+        this.mNSClientService = nsClientService;
     }
 
 
@@ -115,7 +119,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
                 MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "do connect"));
                 mSocket.connect();
                 mSocket.on("dataUpdate", onDataUpdate);
-                //mSocket.on("announcement", onAnnouncement);
+                mSocket.on("announcement", onAnnouncement);
                 //mSocket.on("alarm", onAlarm);
                 //mSocket.on("urgent_alarm", onUrgentAlarm);
                 //mSocket.on("clear_alarm", onClearAlarm);
@@ -419,6 +423,39 @@ public class WebsocketTransportService implements TransportServiceInterface {
                     }
                 }
             });
+        }
+    };
+
+
+    private Emitter.Listener onAnnouncement = new Emitter.Listener() {
+        /*
+        {
+        "level":0,
+        "title":"Announcement",
+        "message":"test",
+        "plugin":{"name":"treatmentnotify","label":"Treatment Notifications","pluginType":"notification","enabled":true},
+        "group":"Announcement",
+        "isAnnouncement":true,
+        "key":"9ac46ad9a1dcda79dd87dae418fce0e7955c68da"
+        }
+         */
+        @Override
+        public void call(final Object... args) {
+            JSONObject data;
+            try {
+                data = (JSONObject) args[0];
+            } catch (Exception e) {
+                FabricPrivacy.log("Wrong Announcement from NS: " + args[0]);
+                return;
+            }
+            if (Config.detailedLog)
+                try {
+                    MainApp.bus().post(new EventNSClientNewLog("ANNOUNCEMENT", JsonHelper.safeGetString(data, "message", "received")));
+                } catch (Exception e) {
+                    FabricPrivacy.logException(e);
+                }
+            BroadcastAnnouncement.handleAnnouncement(data, mNSClientService.getApplicationContext());
+            log.debug(data.toString());
         }
     };
 }
