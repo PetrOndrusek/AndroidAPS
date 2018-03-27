@@ -19,6 +19,7 @@ import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.data.ProfileStore;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
+import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSAuthAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastCals;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastDeviceStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastFood;
@@ -57,6 +58,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
     private String nsAPIhashCode = "";
     private ProfileStore profileStore;
     private static Integer dataCounter = 0;
+    private static Integer connectCounter = 0;
     public long latestDateInReceivedData = 0;
 
     @Override
@@ -107,9 +109,9 @@ public class WebsocketTransportService implements TransportServiceInterface {
                 opt.forceNew = true;
                 opt.reconnection = true;
                 mSocket = IO.socket(nsConfig.url, opt);
-                //mSocket.on(Socket.EVENT_CONNECT, onConnect);
-                //mSocket.on(Socket.EVENT_DISCONNECT, onDisconnect);
-                //mSocket.on(Socket.EVENT_PING, onPing);
+                mSocket.on(Socket.EVENT_CONNECT, onConnect);
+                mSocket.on(Socket.EVENT_DISCONNECT, onDisconnect);
+                mSocket.on(Socket.EVENT_PING, onPing);
                 MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "do connect"));
                 mSocket.connect();
                 mSocket.on("dataUpdate", onDataUpdate);
@@ -165,6 +167,48 @@ public class WebsocketTransportService implements TransportServiceInterface {
         MainApp.bus().register(this);
     }
 
+
+    private Emitter.Listener onConnect = new Emitter.Listener() {
+        @Override
+        public void call(Object... args) {
+            connectCounter++;
+            MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "connect #" + connectCounter + " event. ID: " + mSocket.id()));
+            sendAuthMessage(new NSAuthAck());
+        }
+    };
+
+    public void sendAuthMessage(NSAuthAck ack) {
+        JSONObject authMessage = new JSONObject();
+        try {
+            authMessage.put("client", "Android_" + nsConfig.device);
+            authMessage.put("history", nsConfig.hours);
+            authMessage.put("status", true); // receive status
+            authMessage.put("from", latestDateInReceivedData); // send data newer than
+            authMessage.put("secret", nsAPIhashCode);
+        } catch (JSONException e) {
+            log.error("Unhandled exception", e);
+            return;
+        }
+        MainApp.bus().post(new EventNSClientNewLog("AUTH", "requesting auth"));
+        mSocket.emit("authorize", authMessage, ack);
+    }
+
+    private Emitter.Listener onDisconnect = new Emitter.Listener() {
+        @Override
+        public void call(Object... args) {
+            MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "disconnect event"));
+        }
+    };
+
+    private Emitter.Listener onPing = new Emitter.Listener() {
+        @Override
+        public void call(final Object... args) {
+            if (Config.detailedLog)
+                MainApp.bus().post(new EventNSClientNewLog("PING", "received"));
+            // send data if there is something waiting
+            resend("Ping received");
+        }
+    };
 
     private Emitter.Listener onDataUpdate = new Emitter.Listener() {
         @Override
