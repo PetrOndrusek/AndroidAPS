@@ -239,10 +239,10 @@ public class NSClientService extends Service {
         if (transportService == null)
         {
             if (nsConfig.restEnabled) {
-                transportService = new WebsocketTransportService(nsConfig, this);  // REST variant in the future
+                transportService = new WebsocketTransportService(nsConfig, this, handler);  // REST variant in the future
             }
             else {
-                transportService = new WebsocketTransportService(nsConfig, this);
+                transportService = new WebsocketTransportService(nsConfig, this, handler);
             }
         }
         return transportService;

@@ -1,10 +1,12 @@
 package info.nightscout.androidaps.plugins.NSClientInternal.services;
 
 import android.content.Context;
+import android.os.Handler;
 import android.os.PowerManager;
 
 import com.google.common.base.Charsets;
 import com.google.common.hash.Hashing;
+import com.j256.ormlite.dao.CloseableIterator;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -13,13 +15,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URISyntaxException;
+import java.sql.SQLException;
 
 import info.nightscout.androidaps.Config;
 import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.data.ProfileStore;
+import info.nightscout.androidaps.db.DbRequest;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
+import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSAddAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSAuthAck;
+import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSUpdateAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastAlarm;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastAnnouncement;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastCals;
@@ -65,7 +71,9 @@ public class WebsocketTransportService implements TransportServiceInterface {
     private static Integer dataCounter = 0;
     private static Integer connectCounter = 0;
     private long latestDateInReceivedData = 0;
+    private long lastResendTime = 0;
     private NSClientService mNSClientService = null;
+    private Handler mHandler = null;
 
     @Override
     public boolean isConnected() {
@@ -88,11 +96,12 @@ public class WebsocketTransportService implements TransportServiceInterface {
     }
 
 
-    public WebsocketTransportService(NSConfiguration nsConfig, NSClientService nsClientService)
+    public WebsocketTransportService(NSConfiguration nsConfig, NSClientService nsClientService, Handler handler)
     {
         registerBus();
         this.nsConfig = nsConfig;
         this.mNSClientService = nsClientService;
+        this.mHandler = handler;
     }
 
 
@@ -162,8 +171,111 @@ public class WebsocketTransportService implements TransportServiceInterface {
     @Override
     public void resend(String reason) {
 
+        if (UploadQueue.size() == 0)
+            return;
+
+        if (!isConnected || !hasWriteAuth) return;
+
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (mSocket == null || !mSocket.connected()) return;
+
+                if (lastResendTime > System.currentTimeMillis() - 10 * 1000L) {
+                    log.debug("Skipping resend by lastResendTime: " + ((System.currentTimeMillis() - lastResendTime) / 1000L) + " sec");
+                    return;
+                }
+                lastResendTime = System.currentTimeMillis();
+
+                MainApp.bus().post(new EventNSClientNewLog("QUEUE", "Resend started: " + reason));
+
+                CloseableIterator<DbRequest> iterator = null;
+                int maxcount = 30;
+                try {
+                    iterator = MainApp.getDbHelper().getDbRequestInterator();
+                    try {
+                        while (iterator.hasNext() && maxcount > 0) {
+                            DbRequest dbr = iterator.next();
+                            if (dbr.action.equals("dbAdd")) {
+                                NSAddAck addAck = new NSAddAck();
+                                dbAdd(dbr, addAck);
+                            } else if (dbr.action.equals("dbRemove")) {
+                                NSUpdateAck removeAck = new NSUpdateAck(dbr.action, dbr._id);
+                                dbRemove(dbr, removeAck);
+                            } else if (dbr.action.equals("dbUpdate")) {
+                                NSUpdateAck updateAck = new NSUpdateAck(dbr.action, dbr._id);
+                                dbUpdate(dbr, updateAck);
+                            } else if (dbr.action.equals("dbUpdateUnset")) {
+                                NSUpdateAck updateUnsetAck = new NSUpdateAck(dbr.action, dbr._id);
+                                dbUpdateUnset(dbr, updateUnsetAck);
+                            }
+                            maxcount--;
+                        }
+                    } finally {
+                        iterator.close();
+                    }
+                } catch (SQLException e) {
+                    log.error("Unhandled exception", e);
+                }
+
+                MainApp.bus().post(new EventNSClientNewLog("QUEUE", "Resend ended: " + reason));
+            }
+        });
     }
 
+    public void dbAdd(DbRequest dbr, NSAddAck ack) {
+        try {
+            if (!isConnected || !hasWriteAuth) return;
+            JSONObject message = new JSONObject();
+            message.put("collection", dbr.collection);
+            message.put("data", new JSONObject(dbr.data));
+            mSocket.emit("dbAdd", message, ack);
+            MainApp.bus().post(new EventNSClientNewLog("DBADD " + dbr.collection, "Sent " + dbr.nsClientID));
+        } catch (JSONException e) {
+            log.error("Unhandled exception", e);
+        }
+    }
+
+    public void dbRemove(DbRequest dbr, NSUpdateAck ack) {
+        try {
+            if (!isConnected || !hasWriteAuth) return;
+            JSONObject message = new JSONObject();
+            message.put("collection", dbr.collection);
+            message.put("_id", dbr._id);
+            mSocket.emit("dbRemove", message, ack);
+            MainApp.bus().post(new EventNSClientNewLog("DBREMOVE " + dbr.collection, "Sent " + dbr._id));
+        } catch (JSONException e) {
+            log.error("Unhandled exception", e);
+        }
+    }
+
+    public void dbUpdate(DbRequest dbr, NSUpdateAck ack) {
+        try {
+            if (!isConnected || !hasWriteAuth) return;
+            JSONObject message = new JSONObject();
+            message.put("collection", dbr.collection);
+            message.put("_id", dbr._id);
+            message.put("data", new JSONObject(dbr.data));
+            mSocket.emit("dbUpdate", message, ack);
+            MainApp.bus().post(new EventNSClientNewLog("DBUPDATE " + dbr.collection, "Sent " + dbr._id));
+        } catch (JSONException e) {
+            log.error("Unhandled exception", e);
+        }
+    }
+
+    public void dbUpdateUnset(DbRequest dbr, NSUpdateAck ack) {
+        try {
+            if (!isConnected || !hasWriteAuth) return;
+            JSONObject message = new JSONObject();
+            message.put("collection", dbr.collection);
+            message.put("_id", dbr._id);
+            message.put("data", new JSONObject(dbr.data));
+            mSocket.emit("dbUpdateUnset", message, ack);
+            MainApp.bus().post(new EventNSClientNewLog("DBUPDATEUNSET " + dbr.collection, "Sent " + dbr._id));
+        } catch (JSONException e) {
+            log.error("Unhandled exception", e);
+        }
+    }
 
     private void registerBus() {
         try {
