@@ -7,6 +7,7 @@ import android.os.PowerManager;
 import com.google.common.base.Charsets;
 import com.google.common.hash.Hashing;
 import com.j256.ormlite.dao.CloseableIterator;
+import com.squareup.otto.Subscribe;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -19,6 +20,7 @@ import java.sql.SQLException;
 
 import info.nightscout.androidaps.Config;
 import info.nightscout.androidaps.MainApp;
+import info.nightscout.androidaps.R;
 import info.nightscout.androidaps.data.ProfileStore;
 import info.nightscout.androidaps.db.DbRequest;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
@@ -45,6 +47,7 @@ import info.nightscout.androidaps.plugins.NSClientInternal.data.NSTreatment;
 import info.nightscout.androidaps.plugins.NSClientInternal.events.EventNSClientNewLog;
 import info.nightscout.androidaps.plugins.NSClientInternal.events.EventNSClientStatus;
 import info.nightscout.androidaps.plugins.Overview.events.EventDismissNotification;
+import info.nightscout.androidaps.plugins.Overview.events.EventNewNotification;
 import info.nightscout.androidaps.plugins.Overview.notifications.Notification;
 import info.nightscout.utils.DateUtil;
 import info.nightscout.utils.FabricPrivacy;
@@ -74,6 +77,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
     private long lastResendTime = 0;
     private NSClientService mNSClientService = null;
     private Handler mHandler = null;
+    private UploadQueue mUploadQueue = null;
 
     @Override
     public boolean isConnected() {
@@ -96,17 +100,21 @@ public class WebsocketTransportService implements TransportServiceInterface {
     }
 
 
-    public WebsocketTransportService(NSConfiguration nsConfig, NSClientService nsClientService, Handler handler)
+    public WebsocketTransportService(NSConfiguration nsConfig, NSClientService nsClientService, Handler handler, UploadQueue uploadQueue)
     {
         registerBus();
         this.nsConfig = nsConfig;
         this.mNSClientService = nsClientService;
         this.mHandler = handler;
+        this.mUploadQueue = uploadQueue;
     }
 
 
     @Override
     public void initialize() {
+
+        dataCounter = 0;
+        latestDateInReceivedData = 0;
 
         if (!nsConfig.apiSecret.equals(""))
             nsAPIhashCode = Hashing.sha1().hashString(nsConfig.apiSecret, Charsets.UTF_8).toString();
@@ -171,7 +179,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
     @Override
     public void resend(String reason) {
 
-        if (UploadQueue.size() == 0)
+        if (mUploadQueue.size() == 0)
             return;
 
         if (!isConnected || !hasWriteAuth) return;
@@ -411,7 +419,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
                                     NSTreatment treatment = new NSTreatment(jsonTreatment);
 
                                     // remove from upload queue if Ack is failing
-                                    UploadQueue.removeID(jsonTreatment);
+                                    mUploadQueue.removeID(jsonTreatment);
                                     //Find latest date in treatment
                                     if (treatment.getMills() != null && treatment.getMills() < System.currentTimeMillis())
                                         if (treatment.getMills() > latestDateInReceivedData)
@@ -443,7 +451,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
                                     for (Integer index = 0; index < devicestatuses.length(); index++) {
                                         JSONObject jsonStatus = devicestatuses.getJSONObject(index);
                                         // remove from upload queue if Ack is failing
-                                        UploadQueue.removeID(jsonStatus);
+                                        mUploadQueue.removeID(jsonStatus);
                                     }
                                     BroadcastDeviceStatus.handleNewDeviceStatus(devicestatuses, MainApp.instance().getApplicationContext(), isDelta);
                                 }
@@ -459,7 +467,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
                                     JSONObject jsonFood = foods.getJSONObject(index);
 
                                     // remove from upload queue if Ack is failing
-                                    UploadQueue.removeID(jsonFood);
+                                    mUploadQueue.removeID(jsonFood);
 
                                     String action = JsonHelper.safeGetString(jsonFood, "action");
 
@@ -488,7 +496,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
                                 for (Integer index = 0; index < mbgs.length(); index++) {
                                     JSONObject jsonMbg = mbgs.getJSONObject(index);
                                     // remove from upload queue if Ack is failing
-                                    UploadQueue.removeID(jsonMbg);
+                                    mUploadQueue.removeID(jsonMbg);
                                 }
                                 BroadcastMbgs.handleNewMbg(mbgs, MainApp.instance().getApplicationContext(), isDelta);
                             }
@@ -499,7 +507,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
                                 // Retreive actual calibration
                                 for (Integer index = 0; index < cals.length(); index++) {
                                     // remove from upload queue if Ack is failing
-                                    UploadQueue.removeID(cals.optJSONObject(index));
+                                    mUploadQueue.removeID(cals.optJSONObject(index));
                                 }
                                 BroadcastCals.handleNewCal(cals, MainApp.instance().getApplicationContext(), isDelta);
                             }
@@ -513,7 +521,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
                                     NSSgv sgv = new NSSgv(jsonSgv);
                                     // Handle new sgv here
                                     // remove from upload queue if Ack is failing
-                                    UploadQueue.removeID(jsonSgv);
+                                    mUploadQueue.removeID(jsonSgv);
                                     //Find latest date in sgv
                                     if (sgv.getMills() != null && sgv.getMills() < System.currentTimeMillis())
                                         if (sgv.getMills() > latestDateInReceivedData)
@@ -658,4 +666,51 @@ public class WebsocketTransportService implements TransportServiceInterface {
             log.debug(data.toString());
         }
     };
+
+    @Subscribe
+    public void onStatusEvent(NSAuthAck ack) {
+        String connectionStatus = "Authenticated (";
+        if (ack.read) connectionStatus += "R";
+        if (ack.write) connectionStatus += "W";
+        if (ack.write_treatment) connectionStatus += "T";
+        connectionStatus += ')';
+        isConnected = true;
+        hasWriteAuth = ack.write && ack.write_treatment;
+        MainApp.bus().post(new EventNSClientStatus(connectionStatus));
+        MainApp.bus().post(new EventNSClientNewLog("AUTH", connectionStatus));
+        if (!ack.write) {
+            MainApp.bus().post(new EventNSClientNewLog("ERROR", "Write permission not granted !!!!"));
+        }
+        if (!ack.write_treatment) {
+            MainApp.bus().post(new EventNSClientNewLog("ERROR", "Write treatment permission not granted !!!!"));
+        }
+        if (!hasWriteAuth) {
+            Notification noperm = new Notification(Notification.NSCLIENT_NO_WRITE_PERMISSION, MainApp.sResources.getString(R.string.nowritepermission), Notification.URGENT);
+            MainApp.bus().post(new EventNewNotification(noperm));
+        } else {
+            MainApp.bus().post(new EventDismissNotification(Notification.NSCLIENT_NO_WRITE_PERMISSION));
+        }
+    }
+
+
+    @Subscribe
+    public void onStatusEvent(NSUpdateAck ack) {
+        if (ack.result) {
+            mUploadQueue.removeID(ack.action, ack._id);
+            MainApp.bus().post(new EventNSClientNewLog("DBUPDATE/DBREMOVE", "Acked " + ack._id));
+        } else {
+            MainApp.bus().post(new EventNSClientNewLog("ERROR", "DBUPDATE/DBREMOVE Unknown response"));
+        }
+    }
+
+
+    @Subscribe
+    public void onStatusEvent(NSAddAck ack) {
+        if (ack.nsClientID != null) {
+            mUploadQueue.removeID(ack.json);
+            MainApp.bus().post(new EventNSClientNewLog("DBADD", "Acked " + ack.nsClientID));
+        } else {
+            MainApp.bus().post(new EventNSClientNewLog("ERROR", "DBADD Unknown response"));
+        }
+    }
 }

@@ -180,7 +180,6 @@ public class NSClientService extends Service {
     @Subscribe
     public void onStatusEvent(EventConfigBuilderChange ev) {
         if (nsConfig.enabled != MainApp.getSpecificPlugin(NSClientPlugin.class).isEnabled(PluginBase.GENERAL)) {
-            latestDateInReceivedData = 0;
             destroy();
             initialize();
         }
@@ -188,7 +187,6 @@ public class NSClientService extends Service {
 
     @Subscribe
     public void onStatusEvent(final EventNSClientRestart ev) {
-        latestDateInReceivedData = 0;
         restart();
     }
 
@@ -239,10 +237,10 @@ public class NSClientService extends Service {
         if (transportService == null)
         {
             if (nsConfig.restEnabled) {
-                transportService = new WebsocketTransportService(nsConfig, this, handler);  // REST variant in the future
+                transportService = new WebsocketTransportService(nsConfig, this, handler, uploadQueue);  // REST variant in the future
             }
             else {
-                transportService = new WebsocketTransportService(nsConfig, this, handler);
+                transportService = new WebsocketTransportService(nsConfig, this, handler, uploadQueue);
             }
         }
         return transportService;
