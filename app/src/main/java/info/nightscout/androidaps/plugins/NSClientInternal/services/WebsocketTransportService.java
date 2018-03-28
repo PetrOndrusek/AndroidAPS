@@ -40,6 +40,7 @@ import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastS
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastTreatment;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastUrgentAlarm;
+import info.nightscout.androidaps.plugins.NSClientInternal.data.AlarmAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSConfiguration;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSSettingsStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSSgv;
@@ -666,6 +667,12 @@ public class WebsocketTransportService implements TransportServiceInterface {
             log.debug(data.toString());
         }
     };
+
+    public void sendAlarmAck(AlarmAck alarmAck) {
+        if (!isConnected || !hasWriteAuth) return;
+        mSocket.emit("ack", alarmAck.level, alarmAck.group, alarmAck.silenceTime);
+        MainApp.bus().post(new EventNSClientNewLog("ALARMACK ", alarmAck.level + " " + alarmAck.group + " " + alarmAck.silenceTime));
+    }
 
     @Subscribe
     public void onStatusEvent(NSAuthAck ack) {
