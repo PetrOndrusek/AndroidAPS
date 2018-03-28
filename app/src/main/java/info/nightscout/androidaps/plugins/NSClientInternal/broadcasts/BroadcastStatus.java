@@ -34,8 +34,10 @@ public class BroadcastStatus {
         } catch (PackageManager.NameNotFoundException e) {
             log.error("Unhandled exception", e);
         }
-        bundle.putString("nightscoutversionname", NSClientService.nightscoutVersionName);
-        bundle.putInt("nightscoutversioncode", NSClientService.nightscoutVersionCode);
+        if (NSClientService.instance != null) {
+            bundle.putString("nightscoutversionname", NSClientService.instance.getTransportService().getNightscoutVersionName());
+            bundle.putInt("nightscoutversioncode", NSClientService.instance.getTransportService().getNightscoutVersionCode());
+        }
         bundle.putString("status", status.getData().toString());
         bundle.putBoolean("delta", isDelta);
         Intent intent = new Intent(Intents.ACTION_NEW_STATUS);
@@ -51,8 +53,10 @@ public class BroadcastStatus {
             } catch (PackageManager.NameNotFoundException e) {
                 log.error("Unhandled exception", e);
             }
-            bundle.putString("nightscoutversionname", NSClientService.nightscoutVersionName);
-            bundle.putInt("nightscoutversioncode", NSClientService.nightscoutVersionCode);
+            if (NSClientService.instance != null) {
+                bundle.putString("nightscoutversionname", NSClientService.instance.getTransportService().getNightscoutVersionName());
+                bundle.putInt("nightscoutversioncode", NSClientService.instance.getTransportService().getNightscoutVersionCode());
+            }
             bundle.putString("status", status.getData().toString());
             bundle.putBoolean("delta", isDelta);
             intent = new Intent(Intents.ACTION_NEW_STATUS);

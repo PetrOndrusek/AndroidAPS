@@ -341,7 +341,7 @@ public class WebsocketTransportService implements TransportServiceInterface {
     private Emitter.Listener onDataUpdate = new Emitter.Listener() {
         @Override
         public void call(final Object... args) {
-            NSClientService.handler.post(new Runnable() {
+            mHandler.post(new Runnable() {
                 @Override
                 public void run() {
                     PowerManager powerManager = (PowerManager) MainApp.instance().getApplicationContext().getSystemService(Context.POWER_SERVICE);

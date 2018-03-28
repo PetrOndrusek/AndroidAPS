@@ -33,7 +33,7 @@ public class UploadQueue {
     }
 
     private static void startService() {
-        if (NSClientService.handler == null) {
+        if (NSClientService.instance != null && NSClientService.instance.handler == null) {
             Context context = MainApp.instance();
             context.startService(new Intent(context, NSClientService.class));
             SystemClock.sleep(2000);
@@ -42,8 +42,8 @@ public class UploadQueue {
 
     public static void add(final DbRequest dbr) {
         startService();
-        if (NSClientService.handler != null) {
-            NSClientService.handler.post(new Runnable() {
+        if (NSClientService.instance != null && NSClientService.instance.handler != null) {
+            NSClientService.instance.handler.post(new Runnable() {
                 @Override
                 public void run() {
                     log.debug("QUEUE adding: " + dbr.data);
@@ -59,8 +59,8 @@ public class UploadQueue {
 
     public static void clearQueue() {
         startService();
-        if (NSClientService.handler != null) {
-            NSClientService.handler.post(new Runnable() {
+        if (NSClientService.instance != null && NSClientService.instance.handler != null) {
+            NSClientService.instance.handler.post(new Runnable() {
                 @Override
                 public void run() {
                     log.debug("QUEUE ClearQueue");
@@ -73,8 +73,8 @@ public class UploadQueue {
 
     public static void removeID(final JSONObject record) {
         startService();
-        if (NSClientService.handler != null) {
-            NSClientService.handler.post(new Runnable() {
+        if (NSClientService.instance != null && NSClientService.instance.handler != null) {
+            NSClientService.instance.handler.post(new Runnable() {
                 @Override
                 public void run() {
                     try {
@@ -99,8 +99,8 @@ public class UploadQueue {
         if (_id == null || _id.equals(""))
             return;
         startService();
-        if (NSClientService.handler != null) {
-            NSClientService.handler.post(new Runnable() {
+        if (NSClientService.instance != null && NSClientService.instance.handler != null) {
+            NSClientService.instance.handler.post(new Runnable() {
                 @Override
                 public void run() {
                     MainApp.getDbHelper().deleteDbRequestbyMongoId(action, _id);

@@ -221,7 +221,7 @@ public class NSClientPlugin implements PluginBase {
     }
 
     public UploadQueue queue() {
-        return NSClientService.uploadQueue;
+        return NSClientService.instance == null ? null : NSClientService.instance.uploadQueue;
     }
 
     public String url() {
@@ -235,6 +235,6 @@ public class NSClientPlugin implements PluginBase {
     }
 
     public boolean hasWritePermission() {
-        return nsClientService.hasWriteAuth;
+        return nsClientService.hasWriteAuth();
     }
 }
