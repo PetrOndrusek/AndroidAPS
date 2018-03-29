@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 
 import info.nightscout.androidaps.MainApp;
+import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.AlarmAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSConfiguration;
@@ -37,6 +38,8 @@ public class RestTransportService extends AbstractTransportService {
     private boolean isInitialized = false;
     private NightscoutService mNSService = null;
     private String hashedApiSecret = null;
+    private Thread workerThread = null;
+    private StoppableScheduler batchScheduler = null;
 
     public RestTransportService(NSConfiguration nsConfig, NSClientService nsClientService, Handler handler, UploadQueue uploadQueue) {
         registerBus();
@@ -51,14 +54,14 @@ public class RestTransportService extends AbstractTransportService {
     public void initialize() {
 
         isInitialized = false;
+        workerThread = null;
 
-        EventNSClientNewLog.emit("NSCLIENT", "initialize");
-        EventNSClientStatus.emit("Initializing");
+        EventNSClientNewLog.emit("NSCLIENT", "initialize REST");
+        EventNSClientStatus.emit("REST Initializing");
 
-        if (Str.isNullOrEmpty(nsConfig.url))
-        {
+        if (Str.isNullOrEmpty(nsConfig.url)) {
             EventNSClientNewLog.emit("NSCLIENT", "No NS URL specified");
-            EventNSClientStatus.emit("Not configured");
+            EventNSClientStatus.emit("REST Not configured");
             return;
         }
 
@@ -68,12 +71,9 @@ public class RestTransportService extends AbstractTransportService {
         }
         apiUrl += "api/v1/";
 
-        if (!Str.isNullOrEmpty(nsConfig.apiSecret))
-        {
+        if (!Str.isNullOrEmpty(nsConfig.apiSecret)) {
             hashedApiSecret = Hashing.sha1().hashBytes(nsConfig.apiSecret.getBytes(Charsets.UTF_8)).toString();
-        }
-        else
-        {
+        } else {
             hashedApiSecret = "";
         }
 
@@ -82,31 +82,58 @@ public class RestTransportService extends AbstractTransportService {
                     .baseUrl(apiUrl)
                     .build();
             mNSService = retrofit.create(NightscoutService.class);
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             log.error(ex.getMessage());
             EventNSClientNewLog.emit("NSCLIENT", "ERROR " + ex.getMessage());
-            EventNSClientStatus.emit("Not configured");
+            EventNSClientStatus.emit("REST Not configured");
             return;
         }
 
-        EventNSClientStatus.emit("Initialized");
+        EventNSClientStatus.emit("REST Initialized");
         isInitialized = true;
+
+        // let's prepare cyclic batch scheduler that can be interrupted
+        batchScheduler = new StoppableScheduler(new Runnable() {
+            @Override
+            public void run() {
+                batchCycle();
+            }
+        }, 10 * 1000, 100); // short initial sleep is for events not to get into race condition
+        batchScheduler.start();
+
+        workerThread = new Thread(batchScheduler);
+        workerThread.start();
     }
 
     @Override
     public void destroy() {
+        batchScheduler.stop();
         isInitialized = false;
         isConnected = false;
         hasWriteAuth = false;
         mNSService = null;
-        EventNSClientNewLog.emit("NSCLIENT", "destroy");
-        EventNSClientStatus.emit("Stopped");
+        workerThread = null;
+        EventNSClientNewLog.emit("NSCLIENT", "destroy REST");
+        EventNSClientStatus.emit("REST Stopped");
     }
 
     @Override
     public void resend(final String reason, boolean startNow) {
+        if (startNow) {
+            batchScheduler.activateAfter(0);  // just speed up the cycle activation
+        }
+    }
+
+    @Override
+    public void sendAlarmAck(AlarmAck alarmAck) {
+        // alarms are not yet implemented in REST
+    }
+
+    private void batchCycle() {
+        if (!batchScheduler.isRunning() && !MainApp.getSpecificPlugin(NSClientPlugin.class).paused)
+            return;
+
+        EventNSClientNewLog.emit("NSCLIENT", "Starting batch");
 
         Call<ResponseBody> call = mNSService.getStatus(hashedApiSecret);
 
@@ -132,8 +159,4 @@ public class RestTransportService extends AbstractTransportService {
         }).start();
     }
 
-    @Override
-    public void sendAlarmAck(AlarmAck alarmAck) {
-
-    }
 }
