@@ -52,13 +52,13 @@ public class RestTransportService extends AbstractTransportService {
 
         isInitialized = false;
 
-        MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "initialize"));
-        MainApp.bus().post(new EventNSClientStatus("Initializing"));
+        EventNSClientNewLog.emit("NSCLIENT", "initialize");
+        EventNSClientStatus.emit("Initializing");
 
         if (Str.isNullOrEmpty(nsConfig.url))
         {
-            MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "No NS URL specified"));
-            MainApp.bus().post(new EventNSClientStatus("Not configured"));
+            EventNSClientNewLog.emit("NSCLIENT", "No NS URL specified");
+            EventNSClientStatus.emit("Not configured");
             return;
         }
 
@@ -86,12 +86,12 @@ public class RestTransportService extends AbstractTransportService {
         catch (Exception ex)
         {
             log.error(ex.getMessage());
-            MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "ERROR " + ex.getMessage()));
-            MainApp.bus().post(new EventNSClientStatus("Not configured"));
+            EventNSClientNewLog.emit("NSCLIENT", "ERROR " + ex.getMessage());
+            EventNSClientStatus.emit("Not configured");
             return;
         }
 
-        MainApp.bus().post(new EventNSClientStatus("Initialized"));
+        EventNSClientStatus.emit("Initialized");
         isInitialized = true;
     }
 
@@ -101,8 +101,8 @@ public class RestTransportService extends AbstractTransportService {
         isConnected = false;
         hasWriteAuth = false;
         mNSService = null;
-        MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "destroy"));
-        MainApp.bus().post(new EventNSClientStatus("Stopped"));
+        EventNSClientNewLog.emit("NSCLIENT", "destroy");
+        EventNSClientStatus.emit("Stopped");
     }
 
     @Override
@@ -120,7 +120,7 @@ public class RestTransportService extends AbstractTransportService {
                     String s = body.string();
                     JSONObject json = new JSONObject(s);
                     String status = json.get("status").toString();
-                    MainApp.bus().post(new EventNSClientNewLog("STATUS", status));
+                    EventNSClientNewLog.emit("STATUS", status);
                     log.debug(s);
                 } catch (IOException ex) {
                     log.error(ex.getMessage());

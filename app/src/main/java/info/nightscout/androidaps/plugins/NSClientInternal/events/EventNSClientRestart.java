@@ -1,5 +1,6 @@
 package info.nightscout.androidaps.plugins.NSClientInternal.events;
 
+import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.events.Event;
 
 /**
@@ -7,4 +8,8 @@ import info.nightscout.androidaps.events.Event;
  */
 
 public class EventNSClientRestart extends Event {
+
+    public static void emit() {
+        MainApp.bus().post(new EventNSClientStatus());
+    }
 }

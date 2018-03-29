@@ -1,5 +1,6 @@
 package info.nightscout.androidaps.plugins.NSClientInternal.events;
 
+import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.events.Event;
 
 /**
@@ -15,4 +16,7 @@ public class EventNSClientStatus extends Event {
     public EventNSClientStatus() {
     }
 
+    public static void emit(String status) {
+        MainApp.bus().post(new EventNSClientStatus(status));
+    }
 }

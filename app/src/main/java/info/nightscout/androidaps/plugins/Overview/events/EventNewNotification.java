@@ -1,5 +1,6 @@
 package info.nightscout.androidaps.plugins.Overview.events;
 
+import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.events.Event;
 import info.nightscout.androidaps.plugins.Overview.notifications.Notification;
 
@@ -12,5 +13,9 @@ public class EventNewNotification extends Event {
 
     public EventNewNotification(Notification n) {
         notification = n;
+    }
+
+    public static void emit(Notification notification) {
+        MainApp.bus().post(new EventNewNotification(notification));
     }
 }

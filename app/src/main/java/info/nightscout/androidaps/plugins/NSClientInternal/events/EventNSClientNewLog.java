@@ -3,6 +3,7 @@ package info.nightscout.androidaps.plugins.NSClientInternal.events;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
+import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.events.Event;
 
 /**
@@ -29,5 +30,9 @@ public class EventNSClientNewLog extends Event {
         stringBuilder.append(logText);
         stringBuilder.append("<br>");
         return stringBuilder;
+    }
+
+    public static void emit(String action, String logText) {
+        MainApp.bus().post(new EventNSClientNewLog(action, logText));
     }
 }

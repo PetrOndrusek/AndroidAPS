@@ -1,5 +1,6 @@
 package info.nightscout.androidaps.plugins.Overview.events;
 
+import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.events.Event;
 
 /**
@@ -13,4 +14,7 @@ public class EventDismissNotification extends Event {
         id = did;
     }
 
+    public static void emit(int id) {
+        MainApp.bus().post(new EventDismissNotification(id));
+    }
 }

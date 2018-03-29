@@ -91,16 +91,16 @@ public class WebsocketTransportService extends AbstractTransportService {
         if (!nsConfig.apiSecret.equals(""))
             nsAPIhashCode = Hashing.sha1().hashString(nsConfig.apiSecret, Charsets.UTF_8).toString();
 
-        MainApp.bus().post(new EventNSClientStatus("Initializing"));
+        EventNSClientStatus.emit("Initializing");
         if (MainApp.getSpecificPlugin(NSClientPlugin.class).paused) {
-            MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "paused"));
-            MainApp.bus().post(new EventNSClientStatus("Paused"));
+            EventNSClientNewLog.emit("NSCLIENT", "paused");
+            EventNSClientStatus.emit("Paused");
         } else if (!nsConfig.enabled) {
-            MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "disabled"));
-            MainApp.bus().post(new EventNSClientStatus("Disabled"));
+            EventNSClientNewLog.emit("NSCLIENT", "disabled");
+            EventNSClientStatus.emit("Disabled");
         } else if (!nsConfig.url.equals("")) {
             try {
-                MainApp.bus().post(new EventNSClientStatus("Connecting ..."));
+                EventNSClientStatus.emit("Connecting ...");
                 IO.Options opt = new IO.Options();
                 opt.forceNew = true;
                 opt.reconnection = true;
@@ -108,7 +108,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                 mSocket.on(Socket.EVENT_CONNECT, onConnect);
                 mSocket.on(Socket.EVENT_DISCONNECT, onDisconnect);
                 mSocket.on(Socket.EVENT_PING, onPing);
-                MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "do connect"));
+                EventNSClientNewLog.emit("NSCLIENT", "do connect");
                 mSocket.connect();
                 mSocket.on("dataUpdate", onDataUpdate);
                 mSocket.on("announcement", onAnnouncement);
@@ -116,12 +116,12 @@ public class WebsocketTransportService extends AbstractTransportService {
                 mSocket.on("urgent_alarm", onUrgentAlarm);
                 mSocket.on("clear_alarm", onClearAlarm);
             } catch (URISyntaxException | RuntimeException e) {
-                MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "Wrong URL syntax"));
-                MainApp.bus().post(new EventNSClientStatus("Wrong URL syntax"));
+                EventNSClientNewLog.emit("NSCLIENT", "Wrong URL syntax");
+                EventNSClientStatus.emit("Wrong URL syntax");
             }
         } else {
-            MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "No NS URL specified"));
-            MainApp.bus().post(new EventNSClientStatus("Not configured"));
+            EventNSClientNewLog.emit("NSCLIENT", "No NS URL specified");
+            EventNSClientStatus.emit("Not configured");
         }
     }
 
@@ -139,7 +139,7 @@ public class WebsocketTransportService extends AbstractTransportService {
             mSocket.off("urgent_alarm");
             mSocket.off("clear_alarm");
 
-            MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "destroy"));
+            EventNSClientNewLog.emit("NSCLIENT", "destroy");
             isConnected = false;
             hasWriteAuth = false;
             mSocket.disconnect();
@@ -167,7 +167,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                 }
                 lastResendTime = System.currentTimeMillis();
 
-                MainApp.bus().post(new EventNSClientNewLog("QUEUE", "Resend started: " + reason));
+                EventNSClientNewLog.emit("QUEUE", "Resend started: " + reason);
 
                 CloseableIterator<DbRequest> iterator = null;
                 int maxcount = 30;
@@ -198,7 +198,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                     log.error("Unhandled exception", e);
                 }
 
-                MainApp.bus().post(new EventNSClientNewLog("QUEUE", "Resend ended: " + reason));
+                EventNSClientNewLog.emit("QUEUE", "Resend ended: " + reason);
             }
         });
     }
@@ -210,7 +210,7 @@ public class WebsocketTransportService extends AbstractTransportService {
             message.put("collection", dbr.collection);
             message.put("data", new JSONObject(dbr.data));
             mSocket.emit("dbAdd", message, ack);
-            MainApp.bus().post(new EventNSClientNewLog("DBADD " + dbr.collection, "Sent " + dbr.nsClientID));
+            EventNSClientNewLog.emit("DBADD " + dbr.collection, "Sent " + dbr.nsClientID);
         } catch (JSONException e) {
             log.error("Unhandled exception", e);
         }
@@ -223,7 +223,7 @@ public class WebsocketTransportService extends AbstractTransportService {
             message.put("collection", dbr.collection);
             message.put("_id", dbr._id);
             mSocket.emit("dbRemove", message, ack);
-            MainApp.bus().post(new EventNSClientNewLog("DBREMOVE " + dbr.collection, "Sent " + dbr._id));
+            EventNSClientNewLog.emit("DBREMOVE " + dbr.collection, "Sent " + dbr._id);
         } catch (JSONException e) {
             log.error("Unhandled exception", e);
         }
@@ -237,7 +237,7 @@ public class WebsocketTransportService extends AbstractTransportService {
             message.put("_id", dbr._id);
             message.put("data", new JSONObject(dbr.data));
             mSocket.emit("dbUpdate", message, ack);
-            MainApp.bus().post(new EventNSClientNewLog("DBUPDATE " + dbr.collection, "Sent " + dbr._id));
+            EventNSClientNewLog.emit("DBUPDATE " + dbr.collection, "Sent " + dbr._id);
         } catch (JSONException e) {
             log.error("Unhandled exception", e);
         }
@@ -251,7 +251,7 @@ public class WebsocketTransportService extends AbstractTransportService {
             message.put("_id", dbr._id);
             message.put("data", new JSONObject(dbr.data));
             mSocket.emit("dbUpdateUnset", message, ack);
-            MainApp.bus().post(new EventNSClientNewLog("DBUPDATEUNSET " + dbr.collection, "Sent " + dbr._id));
+            EventNSClientNewLog.emit("DBUPDATEUNSET " + dbr.collection, "Sent " + dbr._id);
         } catch (JSONException e) {
             log.error("Unhandled exception", e);
         }
@@ -262,7 +262,7 @@ public class WebsocketTransportService extends AbstractTransportService {
         @Override
         public void call(Object... args) {
             connectCounter++;
-            MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "connect #" + connectCounter + " event. ID: " + mSocket.id()));
+            EventNSClientNewLog.emit("NSCLIENT", "connect #" + connectCounter + " event. ID: " + mSocket.id());
             sendAuthMessage(new NSAuthAck());
         }
     };
@@ -279,14 +279,14 @@ public class WebsocketTransportService extends AbstractTransportService {
             log.error("Unhandled exception", e);
             return;
         }
-        MainApp.bus().post(new EventNSClientNewLog("AUTH", "requesting auth"));
+        EventNSClientNewLog.emit("AUTH", "requesting auth");
         mSocket.emit("authorize", authMessage, ack);
     }
 
     private Emitter.Listener onDisconnect = new Emitter.Listener() {
         @Override
         public void call(Object... args) {
-            MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "disconnect event"));
+            EventNSClientNewLog.emit("NSCLIENT", "disconnect event");
         }
     };
 
@@ -294,7 +294,7 @@ public class WebsocketTransportService extends AbstractTransportService {
         @Override
         public void call(final Object... args) {
             if (Config.detailedLog)
-                MainApp.bus().post(new EventNSClientNewLog("PING", "received"));
+                EventNSClientNewLog.emit("PING", "received");
             // send data if there is something waiting
             resend("Ping received");
         }
@@ -318,7 +318,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                             // delta means only increment/changes are comming
                             boolean isDelta = data.has("delta");
                             boolean isFull = !isDelta;
-                            MainApp.bus().post(new EventNSClientNewLog("DATA", "Data packet #" + dataCounter++ + (isDelta ? " delta" : " full")));
+                            EventNSClientNewLog.emit("DATA", "Data packet #" + dataCounter++ + (isDelta ? " delta" : " full"));
 
                             if (data.has("profiles")) {
                                 JSONArray profiles = data.getJSONArray("profiles");
@@ -326,7 +326,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                                     JSONObject profile = (JSONObject) profiles.get(profiles.length() - 1);
                                     profileStore = new ProfileStore(profile);
                                     broadcastProfile = true;
-                                    MainApp.bus().post(new EventNSClientNewLog("PROFILE", "profile received"));
+                                    EventNSClientNewLog.emit("PROFILE", "profile received");
                                 }
                             }
 
@@ -336,7 +336,7 @@ public class WebsocketTransportService extends AbstractTransportService {
 
                                 if (!status.has("versionNum")) {
                                     if (status.getInt("versionNum") < Config.SUPPORTEDNSVERSION) {
-                                        MainApp.bus().post(new EventNSClientNewLog("ERROR", "Unsupported Nightscout version !!!!"));
+                                        EventNSClientNewLog.emit("ERROR", "Unsupported Nightscout version !!!!");
                                     }
                                 } else {
                                     nightscoutVersionName = nsSettingsStatus.getVersion();
@@ -361,13 +361,13 @@ public class WebsocketTransportService extends AbstractTransportService {
                         }
                      */
                             } else if (!isDelta) {
-                                MainApp.bus().post(new EventNSClientNewLog("ERROR", "Unsupported Nightscout version !!!!"));
+                                EventNSClientNewLog.emit("ERROR", "Unsupported Nightscout version !!!!");
                             }
 
                             // If new profile received or change detected broadcast it
                             if (broadcastProfile && profileStore != null) {
                                 BroadcastProfile.handleNewTreatment(profileStore, MainApp.instance().getApplicationContext(), isDelta);
-                                MainApp.bus().post(new EventNSClientNewLog("PROFILE", "broadcasting"));
+                                EventNSClientNewLog.emit("PROFILE", "broadcasting");
                             }
 
                             if (data.has("treatments")) {
@@ -376,7 +376,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                                 JSONArray updatedTreatments = new JSONArray();
                                 JSONArray addedTreatments = new JSONArray();
                                 if (treatments.length() > 0)
-                                    MainApp.bus().post(new EventNSClientNewLog("DATA", "received " + treatments.length() + " treatments"));
+                                    EventNSClientNewLog.emit("DATA", "received " + treatments.length() + " treatments");
                                 for (Integer index = 0; index < treatments.length(); index++) {
                                     JSONObject jsonTreatment = treatments.getJSONObject(index);
                                     NSTreatment treatment = new NSTreatment(jsonTreatment);
@@ -410,7 +410,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                             if (data.has("devicestatus")) {
                                 JSONArray devicestatuses = data.getJSONArray("devicestatus");
                                 if (devicestatuses.length() > 0) {
-                                    MainApp.bus().post(new EventNSClientNewLog("DATA", "received " + devicestatuses.length() + " devicestatuses"));
+                                    EventNSClientNewLog.emit("DATA", "received " + devicestatuses.length() + " devicestatuses");
                                     for (Integer index = 0; index < devicestatuses.length(); index++) {
                                         JSONObject jsonStatus = devicestatuses.getJSONObject(index);
                                         // remove from upload queue if Ack is failing
@@ -425,7 +425,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                                 JSONArray updatedFoods = new JSONArray();
                                 JSONArray addedFoods = new JSONArray();
                                 if (foods.length() > 0)
-                                    MainApp.bus().post(new EventNSClientNewLog("DATA", "received " + foods.length() + " foods"));
+                                    EventNSClientNewLog.emit("DATA", "received " + foods.length() + " foods");
                                 for (Integer index = 0; index < foods.length(); index++) {
                                     JSONObject jsonFood = foods.getJSONObject(index);
 
@@ -455,7 +455,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                             if (data.has("mbgs")) {
                                 JSONArray mbgs = data.getJSONArray("mbgs");
                                 if (mbgs.length() > 0)
-                                    MainApp.bus().post(new EventNSClientNewLog("DATA", "received " + mbgs.length() + " mbgs"));
+                                    EventNSClientNewLog.emit("DATA", "received " + mbgs.length() + " mbgs");
                                 for (Integer index = 0; index < mbgs.length(); index++) {
                                     JSONObject jsonMbg = mbgs.getJSONObject(index);
                                     // remove from upload queue if Ack is failing
@@ -466,7 +466,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                             if (data.has("cals")) {
                                 JSONArray cals = data.getJSONArray("cals");
                                 if (cals.length() > 0)
-                                    MainApp.bus().post(new EventNSClientNewLog("DATA", "received " + cals.length() + " cals"));
+                                    EventNSClientNewLog.emit("DATA", "received " + cals.length() + " cals");
                                 // Retreive actual calibration
                                 for (Integer index = 0; index < cals.length(); index++) {
                                     // remove from upload queue if Ack is failing
@@ -477,10 +477,10 @@ public class WebsocketTransportService extends AbstractTransportService {
                             if (data.has("sgvs")) {
                                 JSONArray sgvs = data.getJSONArray("sgvs");
                                 if (sgvs.length() > 0)
-                                    MainApp.bus().post(new EventNSClientNewLog("DATA", "received " + sgvs.length() + " sgvs"));
+                                    EventNSClientNewLog.emit("DATA", "received " + sgvs.length() + " sgvs");
                                 for (Integer index = 0; index < sgvs.length(); index++) {
                                     JSONObject jsonSgv = sgvs.getJSONObject(index);
-                                    // MainApp.bus().post(new EventNSClientNewLog("DATA", "svg " + sgvs.getJSONObject(index).toString());
+                                    // EventNSClientNewLog.emit("DATA", "svg " + sgvs.getJSONObject(index).toString();
                                     NSSgv sgv = new NSSgv(jsonSgv);
                                     // Handle new sgv here
                                     // remove from upload queue if Ack is failing
@@ -495,15 +495,15 @@ public class WebsocketTransportService extends AbstractTransportService {
                                 if ((System.currentTimeMillis() - latestDateInReceivedData) / (60 * 1000L) < 15L)
                                     lessThan15MinAgo = true;
                                 if (Notification.isAlarmForStaleData() && lessThan15MinAgo) {
-                                    MainApp.bus().post(new EventDismissNotification(Notification.NSALARM));
+                                    EventDismissNotification.emit(Notification.NSALARM);
                                 }
                                 BroadcastSgvs.handleNewSgv(sgvs, MainApp.instance().getApplicationContext(), isDelta);
                             }
-                            MainApp.bus().post(new EventNSClientNewLog("LAST", DateUtil.dateAndTimeString(latestDateInReceivedData)));
+                            EventNSClientNewLog.emit("LAST", DateUtil.dateAndTimeString(latestDateInReceivedData));
                         } catch (JSONException e) {
                             log.error("Unhandled exception", e);
                         }
-                        //MainApp.bus().post(new EventNSClientNewLog("NSCLIENT", "onDataUpdate end");
+                        //EventNSClientNewLog.emit("NSCLIENT", "onDataUpdate end");
                     } finally {
                         if (wakeLock.isHeld()) wakeLock.release();
                     }
@@ -536,7 +536,7 @@ public class WebsocketTransportService extends AbstractTransportService {
             }
             if (Config.detailedLog)
                 try {
-                    MainApp.bus().post(new EventNSClientNewLog("ANNOUNCEMENT", JsonHelper.safeGetString(data, "message", "received")));
+                    EventNSClientNewLog.emit("ANNOUNCEMENT", JsonHelper.safeGetString(data, "message", "received"));
                 } catch (Exception e) {
                     FabricPrivacy.logException(e);
                 }
@@ -562,7 +562,7 @@ public class WebsocketTransportService extends AbstractTransportService {
         @Override
         public void call(final Object... args) {
             if (Config.detailedLog)
-                MainApp.bus().post(new EventNSClientNewLog("ALARM", "received"));
+                EventNSClientNewLog.emit("ALARM", "received");
             JSONObject data;
             try {
                 data = (JSONObject) args[0];
@@ -599,7 +599,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                 return;
             }
             if (Config.detailedLog)
-                MainApp.bus().post(new EventNSClientNewLog("URGENTALARM", "received"));
+                EventNSClientNewLog.emit("URGENTALARM", "received");
             BroadcastUrgentAlarm.handleUrgentAlarm(data, mNSClientService.getApplicationContext());
             log.debug(data.toString());
         }
@@ -624,7 +624,7 @@ public class WebsocketTransportService extends AbstractTransportService {
                 return;
             }
             if (Config.detailedLog)
-                MainApp.bus().post(new EventNSClientNewLog("CLEARALARM", "received"));
+                EventNSClientNewLog.emit("CLEARALARM", "received");
             BroadcastClearAlarm.handleClearAlarm(data, mNSClientService.getApplicationContext());
             log.debug(data.toString());
         }
@@ -633,7 +633,7 @@ public class WebsocketTransportService extends AbstractTransportService {
     public void sendAlarmAck(AlarmAck alarmAck) {
         if (!isConnected || !hasWriteAuth) return;
         mSocket.emit("ack", alarmAck.level, alarmAck.group, alarmAck.silenceTime);
-        MainApp.bus().post(new EventNSClientNewLog("ALARMACK ", alarmAck.level + " " + alarmAck.group + " " + alarmAck.silenceTime));
+        EventNSClientNewLog.emit("ALARMACK ", alarmAck.level + " " + alarmAck.group + " " + alarmAck.silenceTime);
     }
 
     @Subscribe
@@ -645,19 +645,19 @@ public class WebsocketTransportService extends AbstractTransportService {
         connectionStatus += ')';
         isConnected = true;
         hasWriteAuth = ack.write && ack.write_treatment;
-        MainApp.bus().post(new EventNSClientStatus(connectionStatus));
-        MainApp.bus().post(new EventNSClientNewLog("AUTH", connectionStatus));
+        EventNSClientStatus.emit(connectionStatus);
+        EventNSClientNewLog.emit("AUTH", connectionStatus);
         if (!ack.write) {
-            MainApp.bus().post(new EventNSClientNewLog("ERROR", "Write permission not granted !!!!"));
+            EventNSClientNewLog.emit("ERROR", "Write permission not granted !!!!");
         }
         if (!ack.write_treatment) {
-            MainApp.bus().post(new EventNSClientNewLog("ERROR", "Write treatment permission not granted !!!!"));
+            EventNSClientNewLog.emit("ERROR", "Write treatment permission not granted !!!!");
         }
         if (!hasWriteAuth) {
             Notification noperm = new Notification(Notification.NSCLIENT_NO_WRITE_PERMISSION, MainApp.sResources.getString(R.string.nowritepermission), Notification.URGENT);
-            MainApp.bus().post(new EventNewNotification(noperm));
+            EventNewNotification.emit(noperm);
         } else {
-            MainApp.bus().post(new EventDismissNotification(Notification.NSCLIENT_NO_WRITE_PERMISSION));
+            EventDismissNotification.emit(Notification.NSCLIENT_NO_WRITE_PERMISSION);
         }
     }
 
@@ -666,9 +666,9 @@ public class WebsocketTransportService extends AbstractTransportService {
     public void onStatusEvent(NSUpdateAck ack) {
         if (ack.result) {
             mUploadQueue.removeID(ack.action, ack._id);
-            MainApp.bus().post(new EventNSClientNewLog("DBUPDATE/DBREMOVE", "Acked " + ack._id));
+            EventNSClientNewLog.emit("DBUPDATE/DBREMOVE", "Acked " + ack._id);
         } else {
-            MainApp.bus().post(new EventNSClientNewLog("ERROR", "DBUPDATE/DBREMOVE Unknown response"));
+            EventNSClientNewLog.emit("ERROR", "DBUPDATE/DBREMOVE Unknown response");
         }
     }
 
@@ -677,9 +677,9 @@ public class WebsocketTransportService extends AbstractTransportService {
     public void onStatusEvent(NSAddAck ack) {
         if (ack.nsClientID != null) {
             mUploadQueue.removeID(ack.json);
-            MainApp.bus().post(new EventNSClientNewLog("DBADD", "Acked " + ack.nsClientID));
+            EventNSClientNewLog.emit("DBADD", "Acked " + ack.nsClientID);
         } else {
-            MainApp.bus().post(new EventNSClientNewLog("ERROR", "DBADD Unknown response"));
+            EventNSClientNewLog.emit("ERROR", "DBADD Unknown response");
         }
     }
 }
