@@ -23,6 +23,7 @@ import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.AlarmAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSConfiguration;
 import info.nightscout.androidaps.plugins.NSClientInternal.events.EventNSClientRestart;
+import info.nightscout.androidaps.plugins.NSClientInternal.services.REST.RestTransportService;
 import info.nightscout.utils.SP;
 
 public class NSClientService extends Service {
@@ -30,7 +31,7 @@ public class NSClientService extends Service {
 
     private PowerManager.WakeLock mWakeLock;
     private IBinder mBinder = new NSClientService.LocalBinder();
-    private TransportServiceInterface transportService = null;
+    private AbstractTransportService transportService = null;
 
     public static NSClientService instance = null;
     public Handler handler;
@@ -132,11 +133,11 @@ public class NSClientService extends Service {
         getTransportService().initialize();
     }
 
-    public TransportServiceInterface getTransportService() {
+    public AbstractTransportService getTransportService() {
         if (transportService == null)
         {
             if (nsConfig.restEnabled) {
-                transportService = new WebsocketTransportService(nsConfig, this, handler, uploadQueue);  // REST variant in the future
+                transportService = new RestTransportService(nsConfig, this, handler, uploadQueue);
             }
             else {
                 transportService = new WebsocketTransportService(nsConfig, this, handler, uploadQueue);

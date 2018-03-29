@@ -61,14 +61,9 @@ import io.socket.emitter.Emitter;
  * Created by PetrOndrusek on 27.03.2018.
  */
 
-public class WebsocketTransportService implements TransportServiceInterface {
+public class WebsocketTransportService extends AbstractTransportService {
     private static Logger log = LoggerFactory.getLogger(WebsocketTransportService.class);
 
-    private boolean isConnected = false;
-    private boolean hasWriteAuth = false;
-    private String nightscoutVersionName = "";
-    private Integer nightscoutVersionCode = 0;
-    private NSConfiguration nsConfig = null;
     private Socket mSocket;
     private String nsAPIhashCode = "";
     private ProfileStore profileStore;
@@ -76,30 +71,6 @@ public class WebsocketTransportService implements TransportServiceInterface {
     private static Integer connectCounter = 0;
     private long latestDateInReceivedData = 0;
     private long lastResendTime = 0;
-    private NSClientService mNSClientService = null;
-    private Handler mHandler = null;
-    private UploadQueue mUploadQueue = null;
-
-    @Override
-    public boolean isConnected() {
-        return isConnected;
-    }
-
-    @Override
-    public boolean hasWriteAuth() {
-        return hasWriteAuth;
-    }
-
-    @Override
-    public String getNightscoutVersionName() {
-        return nightscoutVersionName;
-    }
-
-    @Override
-    public int getNightscoutVersionCode() {
-        return nightscoutVersionCode;
-    }
-
 
     public WebsocketTransportService(NSConfiguration nsConfig, NSClientService nsClientService, Handler handler, UploadQueue uploadQueue)
     {
@@ -284,15 +255,6 @@ public class WebsocketTransportService implements TransportServiceInterface {
         } catch (JSONException e) {
             log.error("Unhandled exception", e);
         }
-    }
-
-    private void registerBus() {
-        try {
-            MainApp.bus().unregister(this);
-        } catch (RuntimeException x) {
-            // Ignore
-        }
-        MainApp.bus().register(this);
     }
 
 
