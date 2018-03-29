@@ -50,7 +50,7 @@ public class UploadQueue {
                     MainApp.getDbHelper().create(dbr);
                     NSClientPlugin plugin = NSClientPlugin.getPlugin();
                     if (plugin != null) {
-                        plugin.resend("newdata");
+                        plugin.resend("newdata", false);
                     }
                 }
             });

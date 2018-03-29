@@ -215,9 +215,9 @@ public class NSClientPlugin implements PluginBase {
         }
     }
 
-    void resend(String reason) {
+    void resend(String reason, boolean startNow) {
         if (nsClientService != null)
-            nsClientService.resend(reason);
+            nsClientService.resend(reason, startNow);
     }
 
     public UploadQueue queue() {

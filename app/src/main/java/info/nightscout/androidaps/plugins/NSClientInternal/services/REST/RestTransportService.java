@@ -106,7 +106,7 @@ public class RestTransportService extends AbstractTransportService {
     }
 
     @Override
-    public void resend(final String reason) {
+    public void resend(final String reason, boolean startNow) {
 
         Call<ResponseBody> call = mNSService.getStatus(hashedApiSecret);
 

@@ -149,7 +149,7 @@ public class WebsocketTransportService extends AbstractTransportService {
 
 
     @Override
-    public void resend(String reason) {
+    public void resend(String reason, boolean startNow) {
 
         if (mUploadQueue.size() == 0)
             return;
@@ -296,7 +296,7 @@ public class WebsocketTransportService extends AbstractTransportService {
             if (Config.detailedLog)
                 EventNSClientNewLog.emit("PING", "received");
             // send data if there is something waiting
-            resend("Ping received");
+            resend("Ping received", true);
         }
     };
 

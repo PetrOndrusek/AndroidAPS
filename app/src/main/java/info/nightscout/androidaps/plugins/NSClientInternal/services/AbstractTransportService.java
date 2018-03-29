@@ -15,7 +15,7 @@ public abstract class AbstractTransportService {
 
     public abstract void initialize();
     public abstract void destroy();
-    public abstract void resend(final String reason);
+    public abstract void resend(final String reason, boolean startNow);
     public abstract void sendAlarmAck(AlarmAck alarmAck);
 
     protected NSClientService mNSClientService = null;
