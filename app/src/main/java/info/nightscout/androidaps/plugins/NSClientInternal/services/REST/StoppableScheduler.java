@@ -1,12 +1,18 @@
 package info.nightscout.androidaps.plugins.NSClientInternal.services.REST;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Date;
+
+import info.nightscout.androidaps.plugins.NSClientInternal.services.WebsocketTransportService;
 
 /**
  * Created by PetrOndrusek on 29.03.2018.
  */
 
 public class StoppableScheduler implements Runnable {
+    private static Logger log = LoggerFactory.getLogger(WebsocketTransportService.class);
 
     public enum State {
         NOT_STARTED,
@@ -66,38 +72,40 @@ public class StoppableScheduler implements Runnable {
 
         while (lastState != State.FINISHED)
         {
-            long now = System.currentTimeMillis();
+            try {
+                long now = System.currentTimeMillis();
 
-            synchronized (this) {
-                lastNextActivation = nextActivation;
-            }
+                synchronized (this) {
+                    lastNextActivation = nextActivation;
+                }
 
-            if (now > lastNextActivation && action != null)
-            {
-                if (lastState == State.RUNNING) {
-                    action.run();
+                if (now > lastNextActivation && action != null) {
+                    if (lastState == State.RUNNING) {
+                        action.run();
+                    }
+
+                    synchronized (this) {
+                        nextActivation = System.currentTimeMillis() + sleepForMillis;
+                    }
                 }
 
                 synchronized (this) {
-                    nextActivation = System.currentTimeMillis() + sleepForMillis;
+                    lastState = this.state;
+                }
+
+                if (lastState != State.FINISHED) {
+                    try {
+                        Thread.sleep(cycleCheckMillis);
+                    } catch (InterruptedException ex) {
+                    }
+                }
+
+                synchronized (this) {
+                    lastState = this.state;
                 }
             }
-
-            synchronized (this)
-            {
-                lastState = this.state;
-            }
-
-            if (lastState != State.FINISHED) {
-                try {
-                    Thread.sleep(cycleCheckMillis);
-                } catch (InterruptedException ex) {
-                }
-            }
-
-            synchronized (this)
-            {
-                lastState = this.state;
+            catch (Exception ex) {
+                log.error(ex.getMessage());
             }
         }
     }

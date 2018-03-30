@@ -53,73 +53,96 @@ public class RestTransportService extends AbstractTransportService {
     @Override
     public void initialize() {
 
-        isInitialized = false;
-        workerThread = null;
-
-        EventNSClientNewLog.emit("NSCLIENT", "initialize REST");
-        EventNSClientStatus.emit("REST Initializing");
-
-        if (Str.isNullOrEmpty(nsConfig.url)) {
-            EventNSClientNewLog.emit("NSCLIENT", "No NS URL specified");
-            EventNSClientStatus.emit("REST Not configured");
-            return;
-        }
-
-        String apiUrl = nsConfig.url;
-        if (!apiUrl.endsWith("/")) {
-            apiUrl += "/";
-        }
-        apiUrl += "api/v1/";
-
-        if (!Str.isNullOrEmpty(nsConfig.apiSecret)) {
-            hashedApiSecret = Hashing.sha1().hashBytes(nsConfig.apiSecret.getBytes(Charsets.UTF_8)).toString();
-        } else {
-            hashedApiSecret = "";
-        }
-
         try {
-            Retrofit retrofit = new Retrofit.Builder()
-                    .baseUrl(apiUrl)
-                    .build();
-            mNSService = retrofit.create(NightscoutService.class);
-        } catch (Exception ex) {
-            log.error(ex.getMessage());
-            EventNSClientNewLog.emit("NSCLIENT", "ERROR " + ex.getMessage());
-            EventNSClientStatus.emit("REST Not configured");
-            return;
-        }
+            isInitialized = false;
+            workerThread = null;
 
-        EventNSClientStatus.emit("REST Initialized");
-        isInitialized = true;
+            EventNSClientNewLog.emit("NSCLIENT", "initialize REST");
+            EventNSClientStatus.emit("REST Initializing");
 
-        // let's prepare cyclic batch scheduler that can be interrupted
-        batchScheduler = new StoppableScheduler(new Runnable() {
-            @Override
-            public void run() {
-                batchCycle();
+            if (Str.isNullOrEmpty(nsConfig.url)) {
+                EventNSClientNewLog.emit("NSCLIENT", "No NS URL specified");
+                EventNSClientStatus.emit("REST Not configured");
+                return;
             }
-        }, 10 * 1000, 100); // short initial sleep is for events not to get into race condition
-        batchScheduler.start();
 
-        workerThread = new Thread(batchScheduler);
-        workerThread.start();
+            if (MainApp.getSpecificPlugin(NSClientPlugin.class).paused) {
+                EventNSClientNewLog.emit("NSCLIENT", "paused");
+                EventNSClientStatus.emit("Paused");
+                return;
+            }
+            if (!nsConfig.enabled) {
+                EventNSClientNewLog.emit("NSCLIENT", "disabled");
+                EventNSClientStatus.emit("Disabled");
+                return;
+            }
+
+            String apiUrl = nsConfig.url;
+            if (!apiUrl.endsWith("/")) {
+                apiUrl += "/";
+            }
+            apiUrl += "api/v1/";
+
+            if (!Str.isNullOrEmpty(nsConfig.apiSecret)) {
+                hashedApiSecret = Hashing.sha1().hashBytes(nsConfig.apiSecret.getBytes(Charsets.UTF_8)).toString();
+            } else {
+                hashedApiSecret = "";
+            }
+
+            try {
+                Retrofit retrofit = new Retrofit.Builder()
+                        .baseUrl(apiUrl)
+                        .build();
+                mNSService = retrofit.create(NightscoutService.class);
+            } catch (Exception ex) {
+                log.error(ex.getMessage());
+                EventNSClientNewLog.emit("NSCLIENT", "ERROR " + ex.getMessage());
+                EventNSClientStatus.emit("REST Not configured");
+                return;
+            }
+
+            EventNSClientStatus.emit("REST Initialized");
+            isInitialized = true;
+
+            // let's prepare cyclic batch scheduler that can be interrupted
+            batchScheduler = new StoppableScheduler(new Runnable() {
+                @Override
+                public void run() {
+                    batchCycle();
+                }
+            }, 10 * 1000, 100); // short initial sleep is for events not to get into race condition
+            batchScheduler.start();
+
+            workerThread = new Thread(batchScheduler);
+            workerThread.start();
+        } catch (Exception ex)
+        {
+            log.error(ex.getMessage());
+            isInitialized = false;
+        }
     }
 
     @Override
     public void destroy() {
-        batchScheduler.stop();
-        isInitialized = false;
-        isConnected = false;
-        hasWriteAuth = false;
-        mNSService = null;
-        workerThread = null;
-        EventNSClientNewLog.emit("NSCLIENT", "destroy REST");
-        EventNSClientStatus.emit("REST Stopped");
+        try {
+            if (batchScheduler != null) {
+                batchScheduler.stop();
+            }
+            isInitialized = false;
+            isConnected = false;
+            hasWriteAuth = false;
+            mNSService = null;
+            workerThread = null;
+            EventNSClientNewLog.emit("NSCLIENT", "destroy REST");
+            EventNSClientStatus.emit("REST Stopped");
+        } catch (Exception ex) {
+            log.error(ex.getMessage());
+        }
     }
 
     @Override
     public void resend(final String reason, boolean startNow) {
-        if (startNow) {
+        if (startNow && batchScheduler != null) {
             batchScheduler.activateAfter(0);  // just speed up the cycle activation
         }
     }
@@ -130,33 +153,37 @@ public class RestTransportService extends AbstractTransportService {
     }
 
     private void batchCycle() {
-        if (!batchScheduler.isRunning() && !MainApp.getSpecificPlugin(NSClientPlugin.class).paused)
-            return;
+        try {
+            if (batchScheduler == null || !batchScheduler.isRunning() || MainApp.getSpecificPlugin(NSClientPlugin.class).paused)
+                return;
 
-        EventNSClientNewLog.emit("NSCLIENT", "Starting batch");
+            EventNSClientNewLog.emit("NSCLIENT", "Starting batch");
 
-        Call<ResponseBody> call = mNSService.getStatus(hashedApiSecret);
+            Call<ResponseBody> call = mNSService.getStatus(hashedApiSecret);
 
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                Response<ResponseBody> response = null;
-                try {
-                    response = call.execute();
-                    ResponseBody body = response.body();
-                    String s = body.string();
-                    JSONObject json = new JSONObject(s);
-                    String status = json.get("status").toString();
-                    EventNSClientNewLog.emit("STATUS", status);
-                    log.debug(s);
-                } catch (IOException ex) {
-                    log.error(ex.getMessage());
-                } catch (JSONException ex) {
-                    log.error(ex.getMessage());
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    Response<ResponseBody> response = null;
+                    try {
+                        response = call.execute();
+                        ResponseBody body = response.body();
+                        String s = body.string();
+                        JSONObject json = new JSONObject(s);
+                        String status = json.get("status").toString();
+                        EventNSClientNewLog.emit("STATUS", status);
+                        log.debug(s);
+                    } catch (IOException ex) {
+                        log.error(ex.getMessage());
+                    } catch (JSONException ex) {
+                        log.error(ex.getMessage());
+                    }
+
                 }
-
-            }
-        }).start();
+            }).start();
+        } catch (Exception ex) {
+            log.error(ex.getMessage());
+        }
     }
 
 }
