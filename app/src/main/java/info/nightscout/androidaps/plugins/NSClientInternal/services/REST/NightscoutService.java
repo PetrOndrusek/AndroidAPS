@@ -18,5 +18,5 @@ import retrofit2.http.Query;
 
 public interface NightscoutService {
     @GET("status.json")
-    Call<ResponseBody> getStatus(@Header("api-secret") String secret);
+    Call<ResponseBody> getStatus();
 }

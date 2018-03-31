@@ -332,34 +332,7 @@ public class WebsocketTransportService extends AbstractTransportService {
 
                             if (data.has("status")) {
                                 JSONObject status = data.getJSONObject("status");
-                                NSSettingsStatus nsSettingsStatus = NSSettingsStatus.getInstance().setData(status);
-
-                                if (!status.has("versionNum")) {
-                                    if (status.getInt("versionNum") < Config.SUPPORTEDNSVERSION) {
-                                        EventNSClientNewLog.emit("ERROR", "Unsupported Nightscout version !!!!");
-                                    }
-                                } else {
-                                    nightscoutVersionName = nsSettingsStatus.getVersion();
-                                    nightscoutVersionCode = nsSettingsStatus.getVersionNum();
-                                }
-                                BroadcastStatus.handleNewStatus(nsSettingsStatus, MainApp.instance().getApplicationContext(), isDelta);
-
-                    /*  Other received data to 2016/02/10
-                        {
-                          status: 'ok'
-                          , name: env.name
-                          , version: env.version
-                          , versionNum: versionNum (for ver 1.2.3 contains 10203)
-                          , serverTime: new Date().toISOString()
-                          , apiEnabled: apiEnabled
-                          , careportalEnabled: apiEnabled && env.settings.enable.indexOf('careportal') > -1
-                          , boluscalcEnabled: apiEnabled && env.settings.enable.indexOf('boluscalc') > -1
-                          , head: env.head
-                          , settings: env.settings
-                          , extendedSettings: ctx.plugins && ctx.plugins.extendedClientSettings ? ctx.plugins.extendedClientSettings(env.extendedSettings) : {}
-                          , activeProfile ..... calculated from treatments or missing
-                        }
-                     */
+                                handleStatus(status, isDelta);
                             } else if (!isDelta) {
                                 EventNSClientNewLog.emit("ERROR", "Unsupported Nightscout version !!!!");
                             }

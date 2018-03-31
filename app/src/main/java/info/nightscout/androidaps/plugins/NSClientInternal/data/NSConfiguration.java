@@ -11,4 +11,5 @@ public class NSConfiguration {
     public String device = "";
     public Integer hours = 48;
     public boolean restEnabled = false;
+    public int restSecondsSleep = 180;
 }

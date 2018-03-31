@@ -110,14 +110,13 @@ public class RestTransportService extends AbstractTransportService {
                 public void run() {
                     batchCycle();
                 }
-            }, 10 * 1000, 100); // short initial sleep is for events not to get into race condition
+            }, nsConfig.restSecondsSleep * 1000, 100); // short initial sleep is for log events not to get into race condition
             batchScheduler.start();
 
             workerThread = new Thread(batchScheduler);
             workerThread.start();
-        } catch (Exception ex)
-        {
-            log.error(ex.getMessage());
+        } catch (Exception ex) {
+            logError(ex.getMessage());
             isInitialized = false;
         }
     }
@@ -136,7 +135,7 @@ public class RestTransportService extends AbstractTransportService {
             EventNSClientNewLog.emit("NSCLIENT", "destroy REST");
             EventNSClientStatus.emit("REST Stopped");
         } catch (Exception ex) {
-            log.error(ex.getMessage());
+            logError(ex.getMessage());
         }
     }
 
@@ -154,36 +153,60 @@ public class RestTransportService extends AbstractTransportService {
 
     private void batchCycle() {
         try {
-            if (batchScheduler == null || !batchScheduler.isRunning() || MainApp.getSpecificPlugin(NSClientPlugin.class).paused)
+            if (!canContinue(false))
                 return;
 
             EventNSClientNewLog.emit("NSCLIENT", "Starting batch");
 
-            Call<ResponseBody> call = mNSService.getStatus(hashedApiSecret);
+            if (getStatus()) {
 
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    Response<ResponseBody> response = null;
-                    try {
-                        response = call.execute();
-                        ResponseBody body = response.body();
-                        String s = body.string();
-                        JSONObject json = new JSONObject(s);
-                        String status = json.get("status").toString();
-                        EventNSClientNewLog.emit("STATUS", status);
-                        log.debug(s);
-                    } catch (IOException ex) {
-                        log.error(ex.getMessage());
-                    } catch (JSONException ex) {
-                        log.error(ex.getMessage());
-                    }
+            }
 
-                }
-            }).start();
+            EventNSClientNewLog.emit("NSCLIENT", "Batch completed");
         } catch (Exception ex) {
-            log.error(ex.getMessage());
+            logError(ex.getMessage());
         }
     }
 
+    private boolean canContinue(boolean checkIsConnected) {
+        return isInitialized
+                && batchScheduler != null
+                && batchScheduler.isRunning()
+                && !MainApp.getSpecificPlugin(NSClientPlugin.class).paused
+                && (!checkIsConnected || isConnected);
+    }
+
+    private boolean getStatus() {
+
+        if (!canContinue(false))
+            return false;
+
+        if (isConnected)
+            return true;
+
+        Call<ResponseBody> call = mNSService.getStatus();
+
+        Response<ResponseBody> response = null;
+        try {
+            response = call.execute();
+            JSONObject json = new JSONObject(response.body().string());
+            handleStatus(json, false);
+            EventNSClientNewLog.emit("STATUS", json.getString("status"));
+        } catch (IOException ex) {
+            logError(ex.getMessage());
+            isConnected = false;
+            return false;
+        } catch (JSONException ex) {
+            logError(ex.getMessage());
+            isConnected = false;
+            return false;
+        }
+        isConnected = true;
+        return true;
+    }
+
+    private void logError(String message) {
+        EventNSClientNewLog.emit("ERROR", message);
+        log.error(message);
+    }
 }
