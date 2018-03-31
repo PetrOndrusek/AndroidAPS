@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
@@ -178,27 +180,41 @@ public class RestTransportService extends AbstractTransportService {
 
     private boolean getStatus() {
 
+        isConnected = false;
         if (!canContinue(false))
             return false;
-
-        if (isConnected)
-            return true;
 
         Call<ResponseBody> call = mNSService.getStatus();
 
         Response<ResponseBody> response = null;
         try {
             response = call.execute();
-            JSONObject json = new JSONObject(response.body().string());
-            handleStatus(json, false);
-            EventNSClientNewLog.emit("STATUS", json.getString("status"));
+            if (response == null || !response.isSuccessful()) {
+                logError("Failed to retrieve status from NS");
+                return false;
+            }
+            JSONObject status = new JSONObject(response.body().string());
+
+            if (status.has("version") && !status.has("versionNum"))
+            {
+                Pattern pattern = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)");
+                Matcher matcher = pattern.matcher(status.getString("version"));
+                if (matcher.find()) {
+                    int versionNum =
+                        (Integer.parseInt(matcher.group(1)) * 10000)
+                            + (Integer.parseInt(matcher.group(2)) * 100)
+                            + (Integer.parseInt(matcher.group(3)));
+                    status.put("versionNum", versionNum);
+                }
+            }
+
+            handleStatus(status, false);
+            EventNSClientNewLog.emit("STATUS", status.getString("status"));
         } catch (IOException ex) {
             logError(ex.getMessage());
-            isConnected = false;
             return false;
         } catch (JSONException ex) {
             logError(ex.getMessage());
-            isConnected = false;
             return false;
         }
         isConnected = true;
