@@ -109,6 +109,20 @@ public class UploadQueue {
         }
     }
 
+    public static void removeNsclientID(final String nsclientID) {
+        startService();
+        if (NSClientService.instance != null && NSClientService.instance.handler != null) {
+            NSClientService.instance.handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (MainApp.getDbHelper().deleteDbRequest(nsclientID) == 1) {
+                        log.debug("Removed item from UploadQueue. " + UploadQueue.status());
+                    }
+                }
+            });
+        }
+    }
+
     public String textList() {
         String result = "";
         CloseableIterator<DbRequest> iterator = null;

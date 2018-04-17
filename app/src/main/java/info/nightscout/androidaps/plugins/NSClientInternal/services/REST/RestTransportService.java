@@ -4,6 +4,7 @@ import android.os.Handler;
 
 import com.google.common.base.Charsets;
 import com.google.common.hash.Hashing;
+import com.j256.ormlite.dao.CloseableIterator;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -11,12 +12,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import info.nightscout.androidaps.MainApp;
+import info.nightscout.androidaps.db.DbRequest;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
+import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSAddAck;
+import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSUpdateAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.AlarmAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSConfiguration;
 import info.nightscout.androidaps.plugins.NSClientInternal.events.EventNSClientNewLog;
@@ -25,6 +30,8 @@ import info.nightscout.androidaps.plugins.NSClientInternal.services.NSClientServ
 import info.nightscout.androidaps.plugins.NSClientInternal.services.AbstractTransportService;
 import info.nightscout.androidaps.plugins.NSClientInternal.services.WebsocketTransportService;
 import info.nightscout.utils.Str;
+import okhttp3.MediaType;
+import okhttp3.RequestBody;
 import okhttp3.ResponseBody;
 import retrofit2.Call;
 import retrofit2.Response;
@@ -38,7 +45,7 @@ public class RestTransportService extends AbstractTransportService {
     private static Logger log = LoggerFactory.getLogger(WebsocketTransportService.class);
 
     private boolean isInitialized = false;
-    private NightscoutService mNSService = null;
+    private NSNetApiService apiService = null;
     private String hashedApiSecret = null;
     private Thread workerThread = null;
     private StoppableScheduler batchScheduler = null;
@@ -83,7 +90,7 @@ public class RestTransportService extends AbstractTransportService {
             if (!apiUrl.endsWith("/")) {
                 apiUrl += "/";
             }
-            apiUrl += "api/v1/";
+            apiUrl += "api/";
 
             if (!Str.isNullOrEmpty(nsConfig.apiSecret)) {
                 hashedApiSecret = Hashing.sha1().hashBytes(nsConfig.apiSecret.getBytes(Charsets.UTF_8)).toString();
@@ -95,7 +102,7 @@ public class RestTransportService extends AbstractTransportService {
                 Retrofit retrofit = new Retrofit.Builder()
                         .baseUrl(apiUrl)
                         .build();
-                mNSService = retrofit.create(NightscoutService.class);
+                apiService = retrofit.create(NSNetApiService.class);
             } catch (Exception ex) {
                 log.error(ex.getMessage());
                 EventNSClientNewLog.emit("NSCLIENT", "ERROR " + ex.getMessage());
@@ -132,7 +139,7 @@ public class RestTransportService extends AbstractTransportService {
             isInitialized = false;
             isConnected = false;
             hasWriteAuth = false;
-            mNSService = null;
+            apiService = null;
             workerThread = null;
             EventNSClientNewLog.emit("NSCLIENT", "destroy REST");
             EventNSClientStatus.emit("REST Stopped");
@@ -160,14 +167,89 @@ public class RestTransportService extends AbstractTransportService {
 
             EventNSClientNewLog.emit("NSCLIENT", "Starting batch");
 
-            if (getStatus()) {
-
-            }
+            uploadCycle();
 
             EventNSClientNewLog.emit("NSCLIENT", "Batch completed");
         } catch (Exception ex) {
             logError(ex.getMessage());
         }
+    }
+
+    private void uploadCycle() {
+        CloseableIterator<DbRequest> iterator = null;
+        int maxcount = 30;
+        try {
+            iterator = MainApp.getDbHelper().getDbRequestInterator();
+            try {
+                while (iterator.hasNext() && maxcount > 0) {
+                    DbRequest dbr = iterator.next();
+                    if (dbr.action.equals("dbAdd")) {
+                        dbAdd(dbr);
+                    }  else if (dbr.action.equals("dbRemove")) {
+                        dbRemove(dbr);
+                    } /*else if (dbr.action.equals("dbUpdate")) {
+                        NSUpdateAck updateAck = new NSUpdateAck(dbr.action, dbr._id);
+                        dbUpdate(dbr, updateAck);
+                    } else if (dbr.action.equals("dbUpdateUnset")) {
+                        NSUpdateAck updateUnsetAck = new NSUpdateAck(dbr.action, dbr._id);
+                        dbUpdateUnset(dbr, updateUnsetAck);
+                    }*/
+                    maxcount--;
+                }
+            } finally {
+                iterator.close();
+            }
+        } catch (SQLException e) {
+            log.error("Unhandled exception", e);
+        }
+    }
+
+    private boolean dbAdd(DbRequest dbr) {
+        try {
+            RequestBody body = RequestBody.create(MediaType.parse("application/json"), dbr.data);
+            Call<ResponseBody> call = apiService.post(hashedApiSecret, dbr.collection, body);
+            Response<ResponseBody> response = call.execute();
+            if (response == null || !response.isSuccessful()) {
+                logError("Failed DBADD " + dbr.collection + " " + dbr.nsClientID);
+                return false;
+            }
+            JSONObject responseJson = new JSONObject(response.body().string());
+            EventNSClientNewLog.emit("DBADD " + dbr.collection, "Sent " + dbr.nsClientID);
+
+            mUploadQueue.removeNsclientID(dbr.nsClientID);
+
+            return true;
+        } catch (IOException ex) {
+                logError(ex.getMessage());
+            return false;
+        } catch (JSONException ex) {
+            logError(ex.getMessage());
+            return false;
+        }
+    }
+
+    private boolean dbRemove(DbRequest dbr) {
+        try {
+            Call<ResponseBody> call = apiService.delete(hashedApiSecret, dbr.collection, dbr._id);
+            Response<ResponseBody> response = call.execute();
+            if (response == null || !response.isSuccessful()) {
+                logError("Failed DBREMOVE " + dbr.collection + " " + dbr._id);
+                return false;
+            }
+            //JSONObject responseJson = new JSONObject(response.body().string());
+            EventNSClientNewLog.emit("DBREMOVE " + dbr.collection, "Sent " + dbr._id);
+
+            mUploadQueue.removeID("dbRemove", dbr._id);
+
+            return true;
+        } catch (IOException ex) {
+            logError(ex.getMessage());
+            return false;
+        }
+//        } catch (JSONException ex) {
+//            logError(ex.getMessage());
+//            return false;
+//        }
     }
 
     private boolean canContinue(boolean checkIsConnected) {
@@ -178,13 +260,13 @@ public class RestTransportService extends AbstractTransportService {
                 && (!checkIsConnected || isConnected);
     }
 
-    private boolean getStatus() {
+    /*private boolean getStatus() {
 
         isConnected = false;
         if (!canContinue(false))
             return false;
 
-        Call<ResponseBody> call = mNSService.getStatus();
+        Call<ResponseBody> call = apiService.getStatus();
 
         Response<ResponseBody> response = null;
         try {
@@ -195,15 +277,14 @@ public class RestTransportService extends AbstractTransportService {
             }
             JSONObject status = new JSONObject(response.body().string());
 
-            if (status.has("version") && !status.has("versionNum"))
-            {
+            if (status.has("version") && !status.has("versionNum")) {
                 Pattern pattern = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)");
                 Matcher matcher = pattern.matcher(status.getString("version"));
                 if (matcher.find()) {
                     int versionNum =
-                        (Integer.parseInt(matcher.group(1)) * 10000)
-                            + (Integer.parseInt(matcher.group(2)) * 100)
-                            + (Integer.parseInt(matcher.group(3)));
+                            (Integer.parseInt(matcher.group(1)) * 10000)
+                                    + (Integer.parseInt(matcher.group(2)) * 100)
+                                    + (Integer.parseInt(matcher.group(3)));
                     status.put("versionNum", versionNum);
                 }
             }
@@ -219,7 +300,7 @@ public class RestTransportService extends AbstractTransportService {
         }
         isConnected = true;
         return true;
-    }
+    }*/
 
     private void logError(String message) {
         EventNSClientNewLog.emit("ERROR", message);
