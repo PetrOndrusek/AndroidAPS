@@ -6,6 +6,7 @@ import com.google.common.base.Charsets;
 import com.google.common.hash.Hashing;
 import com.j256.ormlite.dao.CloseableIterator;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -13,17 +14,25 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import info.nightscout.androidaps.MainApp;
+import info.nightscout.androidaps.db.DatabaseHelper;
 import info.nightscout.androidaps.db.DbRequest;
+import info.nightscout.androidaps.db.Treatment;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
 import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSAddAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSUpdateAck;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastFood;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastTreatment;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.AlarmAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSConfiguration;
+import info.nightscout.androidaps.plugins.NSClientInternal.data.NSTreatment;
 import info.nightscout.androidaps.plugins.NSClientInternal.events.EventNSClientNewLog;
 import info.nightscout.androidaps.plugins.NSClientInternal.events.EventNSClientStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.services.NSClientService;
@@ -49,6 +58,10 @@ public class RestTransportService extends AbstractTransportService {
     private String hashedApiSecret = null;
     private Thread workerThread = null;
     private StoppableScheduler batchScheduler = null;
+    private long latestDateInReceivedData = 0;
+
+    private DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+
 
     public RestTransportService(NSConfiguration nsConfig, NSClientService nsClientService, Handler handler, UploadQueue uploadQueue) {
         registerBus();
@@ -65,6 +78,7 @@ public class RestTransportService extends AbstractTransportService {
         try {
             isInitialized = false;
             workerThread = null;
+            latestDateInReceivedData = System.currentTimeMillis() - (6 * 3600 * 1000);
 
             EventNSClientNewLog.emit("NSCLIENT", "initialize REST");
             EventNSClientStatus.emit("REST Initializing");
@@ -176,6 +190,12 @@ public class RestTransportService extends AbstractTransportService {
     }
 
     private void uploadCycle() {
+
+        uploadChanges();
+        downloadChanges();
+    }
+
+    private void uploadChanges() {
         CloseableIterator<DbRequest> iterator = null;
         int maxcount = 30;
         try {
@@ -213,10 +233,24 @@ public class RestTransportService extends AbstractTransportService {
                 logError("Failed DBADD " + dbr.collection + " " + dbr.nsClientID);
                 return false;
             }
-            JSONObject responseJson = new JSONObject(response.body().string());
             EventNSClientNewLog.emit("DBADD " + dbr.collection, "Sent " + dbr.nsClientID);
 
             mUploadQueue.removeNsclientID(dbr.nsClientID);
+
+            JSONObject responseJson = new JSONObject(response.body().string());
+
+            if (responseJson.has("_id")) {
+                JSONObject mongoIdElement = responseJson.getJSONObject("_id");
+                if (mongoIdElement.has("$oid")) {
+                    String mongoId = mongoIdElement.getString("$oid");
+
+                    Treatment treatment = MainApp.getDbHelper().findTreatmentById(dbr._id);
+                    if (treatment != null) {
+                        treatment._id = mongoId;
+                        MainApp.getDbHelper().update(treatment);
+                    }
+                }
+            }
 
             return true;
         } catch (IOException ex) {
@@ -250,6 +284,78 @@ public class RestTransportService extends AbstractTransportService {
 //            logError(ex.getMessage());
 //            return false;
 //        }
+    }
+
+    private boolean downloadChanges() {
+
+        try {
+            String collections = "treatments";
+            int maxCount = 1000;
+            String fromModified = dateFormat.format(new Date(latestDateInReceivedData));
+            Call<ResponseBody> call = apiService.delta(collections, maxCount, true, fromModified);
+            Response<ResponseBody> response = call.execute();
+            if (response == null || !response.isSuccessful()) {
+                logError("Failed DOWNLOAD");
+                return false;
+            }
+            JSONObject data = new JSONObject(response.body().string());
+
+            if (data.has("treatments")) {
+                JSONArray treatments = data.getJSONArray("treatments");
+                handleTreatments(treatments);
+            }
+
+            return true;
+        } catch (Exception ex) {
+            logError(ex.getMessage());
+            return false;
+        }
+    }
+
+    private void handleTreatments(JSONArray treatments) {
+
+        if (treatments.length() > 0)
+            EventNSClientNewLog.emit("DATA", "received " + treatments.length() + " treatments");
+
+        JSONArray removedTreatments = new JSONArray();
+        JSONArray updatedTreatments = new JSONArray();
+        JSONArray addedTreatments = new JSONArray();
+
+        for (Integer index = 0; index < treatments.length(); index++) {
+            JSONObject jsonTreatment = null;
+            try {
+                jsonTreatment = treatments.getJSONObject(index);
+                NSTreatment treatment = new NSTreatment(jsonTreatment);
+
+                // remove from upload queue if it is stuck
+                mUploadQueue.removeID(jsonTreatment);
+
+                if (treatment.getAction() == null) {
+                    addedTreatments.put(jsonTreatment);
+                } else if (treatment.getAction().equals("update")) {
+                    updatedTreatments.put(jsonTreatment);
+                } else if (treatment.getAction().equals("remove")) {
+                    if (treatment.getModified() > System.currentTimeMillis() - 24 * 60 * 60 * 1000L) // handle 1 day old deletions only
+                        removedTreatments.put(jsonTreatment);
+                }
+
+                if (treatment.getModified() > latestDateInReceivedData) {
+                    latestDateInReceivedData = treatment.getModified();
+                }
+            } catch (JSONException ex) {
+                logError(ex.getMessage());
+            }
+        }
+
+        if (removedTreatments.length() > 0) {
+            BroadcastTreatment.handleRemovedTreatment(removedTreatments, true);
+        }
+        if (updatedTreatments.length() > 0) {
+            BroadcastTreatment.handleChangedTreatment(updatedTreatments, true);
+        }
+        if (addedTreatments.length() > 0) {
+            BroadcastTreatment.handleNewTreatment(addedTreatments, true);
+        }
     }
 
     private boolean canContinue(boolean checkIsConnected) {
