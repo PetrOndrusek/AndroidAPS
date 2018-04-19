@@ -270,7 +270,6 @@ public class RestTransportService extends AbstractTransportService {
                 logError("Failed DBREMOVE " + dbr.collection + " " + dbr._id);
                 return false;
             }
-            //JSONObject responseJson = new JSONObject(response.body().string());
             EventNSClientNewLog.emit("DBREMOVE " + dbr.collection, "Sent " + dbr._id);
 
             mUploadQueue.removeID("dbRemove", dbr._id);
@@ -280,10 +279,6 @@ public class RestTransportService extends AbstractTransportService {
             logError(ex.getMessage());
             return false;
         }
-//        } catch (JSONException ex) {
-//            logError(ex.getMessage());
-//            return false;
-//        }
     }
 
     private boolean downloadChanges() {
@@ -325,7 +320,9 @@ public class RestTransportService extends AbstractTransportService {
             JSONObject jsonTreatment = null;
             try {
                 jsonTreatment = treatments.getJSONObject(index);
+                unpackMongoId(jsonTreatment);
                 NSTreatment treatment = new NSTreatment(jsonTreatment);
+
 
                 // remove from upload queue if it is stuck
                 mUploadQueue.removeID(jsonTreatment);
@@ -358,6 +355,22 @@ public class RestTransportService extends AbstractTransportService {
         }
     }
 
+    private void unpackMongoId(JSONObject json)
+    {
+        try {
+            if (json.has("_id")) {
+                JSONObject jsonId = json.getJSONObject("_id");
+                if (jsonId.has("$oid")) {
+                    String oid = jsonId.getString("$oid");
+                    json.remove("_id");
+                    json.put("_id", oid);
+                }
+            }
+        } catch (JSONException e) {
+            log.error(e.getMessage());
+        }
+    }
+
     private boolean canContinue(boolean checkIsConnected) {
         return isInitialized
                 && batchScheduler != null
@@ -365,48 +378,6 @@ public class RestTransportService extends AbstractTransportService {
                 && !MainApp.getSpecificPlugin(NSClientPlugin.class).paused
                 && (!checkIsConnected || isConnected);
     }
-
-    /*private boolean getStatus() {
-
-        isConnected = false;
-        if (!canContinue(false))
-            return false;
-
-        Call<ResponseBody> call = apiService.getStatus();
-
-        Response<ResponseBody> response = null;
-        try {
-            response = call.execute();
-            if (response == null || !response.isSuccessful()) {
-                logError("Failed to retrieve status from NS");
-                return false;
-            }
-            JSONObject status = new JSONObject(response.body().string());
-
-            if (status.has("version") && !status.has("versionNum")) {
-                Pattern pattern = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)");
-                Matcher matcher = pattern.matcher(status.getString("version"));
-                if (matcher.find()) {
-                    int versionNum =
-                            (Integer.parseInt(matcher.group(1)) * 10000)
-                                    + (Integer.parseInt(matcher.group(2)) * 100)
-                                    + (Integer.parseInt(matcher.group(3)));
-                    status.put("versionNum", versionNum);
-                }
-            }
-
-            handleStatus(status, false);
-            EventNSClientNewLog.emit("STATUS", status.getString("status"));
-        } catch (IOException ex) {
-            logError(ex.getMessage());
-            return false;
-        } catch (JSONException ex) {
-            logError(ex.getMessage());
-            return false;
-        }
-        isConnected = true;
-        return true;
-    }*/
 
     private void logError(String message) {
         EventNSClientNewLog.emit("ERROR", message);

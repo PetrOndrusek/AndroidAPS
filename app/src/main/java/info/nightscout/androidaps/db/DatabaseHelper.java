@@ -21,7 +21,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -362,7 +366,7 @@ public class DatabaseHelper extends OrmLiteSqliteOpenHelper {
         return getDao(ProfileSwitch.class);
     }
 
-    public long roundDateToSec(long date) {
+    public static long roundDateToSec(long date) {
         return date - date % 1000;
     }
     // -------------------  BgReading handling -----------------------
@@ -676,7 +680,7 @@ public class DatabaseHelper extends OrmLiteSqliteOpenHelper {
     }
 
     @Nullable
-    private Treatment findTreatmentById(String _id) {
+    public Treatment findTreatmentById(String _id) {
         try {
             Dao<Treatment, Long> daoTreatments = getDaoTreatments();
             QueryBuilder<Treatment, Long> queryBuilder = daoTreatments.queryBuilder();
@@ -750,7 +754,16 @@ public class DatabaseHelper extends OrmLiteSqliteOpenHelper {
         try {
             Treatment treatment = new Treatment();
             treatment.source = Source.NIGHTSCOUT;
-            treatment.date = roundDateToSec(trJson.getLong("mills"));
+            if (trJson.has("created_at")) {
+                try {
+                    Date createdAt = DateUtil.fromISODateString(trJson.getString("created_at"));
+                    treatment.date = roundDateToSec(createdAt.getTime());
+                } catch (Exception e) {
+                    log.error(e.getMessage());
+                }
+            }if (trJson.has("mills")) {
+                treatment.date = roundDateToSec(trJson.getLong("mills"));
+            }
             treatment.carbs = trJson.has("carbs") ? trJson.getDouble("carbs") : 0;
             treatment.insulin = trJson.has("insulin") ? trJson.getDouble("insulin") : 0d;
             treatment.pumpId = trJson.has("pumpId") ? trJson.getLong("pumpId") : 0;

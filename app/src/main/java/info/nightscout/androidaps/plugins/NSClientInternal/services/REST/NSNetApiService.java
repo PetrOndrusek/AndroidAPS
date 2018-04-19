@@ -20,8 +20,13 @@ public interface NSNetApiService {
     @GET("{collection}")
     Call<ResponseBody> get(@Path("collection") String collection);
 
-    @GET("list")
-    Call<ResponseBody> list(@Query("collections") String collections);
+    @GET("delta")
+    Call<ResponseBody> delta(
+        @Query("collections") String collections,
+        @Query("count") Integer count,
+        @Query("includeDeleted") Boolean includeDeleted,
+        @Query("fromModified") String fromModified
+    );
 
     @POST("{collection}")
     Call<ResponseBody> post(@Header("api-secret") String secretHash,

@@ -12,11 +12,24 @@ public class NSTreatment {
 
     private JSONObject data;
     private String action = null; // "update", "remove" or null (add)
+    private String state = null; // "new", "modified", "deleted"
+    private long modified = 0;
 
     public NSTreatment(JSONObject obj) {
         this.data = obj;
         this.action = getStringOrNull("action");
         this.data.remove("action");
+
+        this.state = getStringOrNull("state");
+        if ("new".equals(this.state)) {
+            this.action = null;
+        } else if ("modified".equals(this.state)) {
+            this.action = "update";
+        } else if ("deleted".equals(this.state)) {
+            this.action = "remove";
+        }
+
+        this.modified = getDateOrZero("modified");
     }
 
     private String getStringOrNull(String key) {
@@ -79,7 +92,24 @@ public class NSTreatment {
         return ret;
     }
 
+    private long getDateOrZero(String key) {
+        long ret = 0;
+        if (data.has(key)) {
+            try {
+                JSONObject dateObj = data.getJSONObject(key);
+                if (dateObj != null && dateObj.has("$date")) {
+                    ret = dateObj.getLong("$date");
+                }
+            } catch (JSONException e) {
+                log.error("Unhandled exception", e);
+            }
+        }
+        return ret;
+    }
+
     public String getAction() { return action; }
+    public String getState() { return state; }
+    public long getModified() { return modified; }
     public JSONObject getData() { return data; }
     public String get_id() { return getStringOrNull("_id"); }
     public String getEnteredBy() { return getStringOrNull("enteredBy"); }
