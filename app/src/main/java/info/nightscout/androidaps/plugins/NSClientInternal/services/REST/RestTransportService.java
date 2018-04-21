@@ -240,7 +240,6 @@ public class RestTransportService extends AbstractTransportService {
             mUploadQueue.removeNsclientID(dbr.nsClientID);
 
             JSONObject responseJson = new JSONObject(response.body().string());
-            unpackMongoId(responseJson);
 
             if (responseJson.has("_id")) {
                 String mongoId = responseJson.getString("_id");
@@ -325,8 +324,6 @@ public class RestTransportService extends AbstractTransportService {
             JSONObject jsonTreatment = null;
             try {
                 jsonTreatment = treatments.getJSONObject(index);
-                unpackMongoId(jsonTreatment);
-                Long modified = unpackModified(jsonTreatment);
                 NSTreatment treatment = new NSTreatment(jsonTreatment);
 
 
@@ -368,8 +365,7 @@ public class RestTransportService extends AbstractTransportService {
             for (Integer index = 0; index < devicestatuses.length(); index++) {
                 try {
                     JSONObject jsonStatus = devicestatuses.getJSONObject(index);
-                    unpackMongoId(jsonStatus);
-                    Long modified = unpackModified(jsonStatus);
+                    Long modified = getLong(jsonStatus, "modified");
 
                     // remove from upload queue if Ack is failing
                     mUploadQueue.removeID(jsonStatus);
@@ -385,39 +381,10 @@ public class RestTransportService extends AbstractTransportService {
         }
     }
 
-    private void unpackMongoId(JSONObject json)
-    {
-        try {
-            if (json.has("_id")) {
-                JSONObject jsonId = json.getJSONObject("_id");
-                if (jsonId.has("$oid")) {
-                    String oid = jsonId.getString("$oid");
-                    json.remove("_id");
-                    json.put("_id", oid);
-                }
-            }
-        } catch (JSONException e) {
-            log.error(e.getMessage());
-        }
-    }
-
-    private Long unpackModified(JSONObject json) {
-        if (json.has("modified")) {
+    private static Long getLong(JSONObject data, String key) {
+        if (data.has(key)) {
             try {
-                Object modifiedObj = json.get("modified");
-                if (modifiedObj instanceof Long || modifiedObj instanceof Integer) {
-                    return (long)modifiedObj;
-                }
-                if (modifiedObj instanceof JSONObject)
-                {
-                    JSONObject modifiedJson = (JSONObject) modifiedObj;
-                    if (modifiedJson.has("$date")) {
-                        long modified = modifiedJson.getLong("$date");
-                        json.remove("modified");
-                        json.put("modified", modified);
-                        return modified;
-                    }
-                }
+                return data.getLong(key);
             } catch (JSONException e) {
                 log.error("Unhandled exception", e);
             }
