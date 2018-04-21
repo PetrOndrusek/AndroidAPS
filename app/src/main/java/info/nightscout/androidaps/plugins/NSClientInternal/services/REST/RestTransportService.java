@@ -28,6 +28,7 @@ import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
 import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSAddAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSUpdateAck;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastDeviceStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastFood;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastTreatment;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.AlarmAck;
@@ -38,6 +39,7 @@ import info.nightscout.androidaps.plugins.NSClientInternal.events.EventNSClientS
 import info.nightscout.androidaps.plugins.NSClientInternal.services.NSClientService;
 import info.nightscout.androidaps.plugins.NSClientInternal.services.AbstractTransportService;
 import info.nightscout.androidaps.plugins.NSClientInternal.services.WebsocketTransportService;
+import info.nightscout.utils.NSUpload;
 import info.nightscout.utils.Str;
 import okhttp3.MediaType;
 import okhttp3.RequestBody;
@@ -238,17 +240,15 @@ public class RestTransportService extends AbstractTransportService {
             mUploadQueue.removeNsclientID(dbr.nsClientID);
 
             JSONObject responseJson = new JSONObject(response.body().string());
+            unpackMongoId(responseJson);
 
             if (responseJson.has("_id")) {
-                JSONObject mongoIdElement = responseJson.getJSONObject("_id");
-                if (mongoIdElement.has("$oid")) {
-                    String mongoId = mongoIdElement.getString("$oid");
+                String mongoId = responseJson.getString("_id");
 
-                    Treatment treatment = MainApp.getDbHelper().findTreatmentById(dbr._id);
-                    if (treatment != null) {
-                        treatment._id = mongoId;
-                        MainApp.getDbHelper().update(treatment);
-                    }
+                Treatment treatment = MainApp.getDbHelper().findTreatmentById(dbr._id);
+                if (treatment != null) {
+                    treatment._id = mongoId;
+                    MainApp.getDbHelper().update(treatment);
                 }
             }
 
@@ -284,7 +284,7 @@ public class RestTransportService extends AbstractTransportService {
     private boolean downloadChanges() {
 
         try {
-            String collections = "treatments";
+            String collections = "treatments;devicestatus";
             int maxCount = 1000;
             String fromModified = dateFormat.format(new Date(latestDateInReceivedData));
             Call<ResponseBody> call = apiService.delta(collections, maxCount, true, fromModified);
@@ -298,6 +298,11 @@ public class RestTransportService extends AbstractTransportService {
             if (data.has("treatments")) {
                 JSONArray treatments = data.getJSONArray("treatments");
                 handleTreatments(treatments);
+            }
+
+            if (data.has("devicestatus")) {
+                JSONArray devicestatuses = data.getJSONArray("devicestatus");
+                handleDevicestatuses(devicestatuses);
             }
 
             return true;
@@ -352,6 +357,25 @@ public class RestTransportService extends AbstractTransportService {
         }
         if (addedTreatments.length() > 0) {
             BroadcastTreatment.handleNewTreatment(addedTreatments, true);
+        }
+    }
+
+    private void handleDevicestatuses(JSONArray devicestatuses) {
+        if (devicestatuses.length() > 0) {
+            EventNSClientNewLog.emit("DATA", "received " + devicestatuses.length() + " devicestatuses");
+
+            for (Integer index = 0; index < devicestatuses.length(); index++) {
+                try {
+                    JSONObject jsonStatus = devicestatuses.getJSONObject(index);
+                    unpackMongoId(jsonStatus);
+
+                    // remove from upload queue if Ack is failing
+                    mUploadQueue.removeID(jsonStatus);
+                } catch (JSONException e) {
+                    logError(e.getMessage());
+                }
+            }
+            BroadcastDeviceStatus.handleNewDeviceStatus(devicestatuses, MainApp.instance().getApplicationContext(), true);
         }
     }
 
