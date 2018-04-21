@@ -29,7 +29,7 @@ public class NSTreatment {
             this.action = "remove";
         }
 
-        this.modified = getDateOrZero("modified");
+        this.modified = getLong("modified", 0);
     }
 
     private String getStringOrNull(String key) {
@@ -70,6 +70,18 @@ public class NSTreatment {
 
     private Long getLongOrNull(String key) {
         Long ret = null;
+        if (data.has(key)) {
+            try {
+                ret = data.getLong(key);
+            } catch (JSONException e) {
+                log.error("Unhandled exception", e);
+            }
+        }
+        return ret;
+    }
+
+    private long getLong(String key, long defaultValue) {
+        long ret = defaultValue;
         if (data.has(key)) {
             try {
                 ret = data.getLong(key);

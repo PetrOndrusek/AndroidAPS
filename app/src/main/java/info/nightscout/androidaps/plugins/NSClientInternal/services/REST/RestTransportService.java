@@ -284,10 +284,10 @@ public class RestTransportService extends AbstractTransportService {
     private boolean downloadChanges() {
 
         try {
-            String collections = "treatments;devicestatus";
-            int maxCount = 1000;
-            String fromModified = dateFormat.format(new Date(latestDateInReceivedData));
-            Call<ResponseBody> call = apiService.delta(collections, maxCount, true, fromModified);
+            String collections = null; // = "all"
+            Integer maxCount = null; // = 1000
+            Boolean includeDeleted = null; // = true
+            Call<ResponseBody> call = apiService.delta(collections, maxCount, includeDeleted, latestDateInReceivedData, null);
             Response<ResponseBody> response = call.execute();
             if (response == null || !response.isSuccessful()) {
                 logError("Failed DOWNLOAD");
@@ -326,6 +326,7 @@ public class RestTransportService extends AbstractTransportService {
             try {
                 jsonTreatment = treatments.getJSONObject(index);
                 unpackMongoId(jsonTreatment);
+                Long modified = unpackModified(jsonTreatment);
                 NSTreatment treatment = new NSTreatment(jsonTreatment);
 
 
@@ -368,9 +369,14 @@ public class RestTransportService extends AbstractTransportService {
                 try {
                     JSONObject jsonStatus = devicestatuses.getJSONObject(index);
                     unpackMongoId(jsonStatus);
+                    Long modified = unpackModified(jsonStatus);
 
                     // remove from upload queue if Ack is failing
                     mUploadQueue.removeID(jsonStatus);
+
+                    if (modified != null && modified > latestDateInReceivedData) {
+                        latestDateInReceivedData = modified;
+                    }
                 } catch (JSONException e) {
                     logError(e.getMessage());
                 }
@@ -393,6 +399,30 @@ public class RestTransportService extends AbstractTransportService {
         } catch (JSONException e) {
             log.error(e.getMessage());
         }
+    }
+
+    private Long unpackModified(JSONObject json) {
+        if (json.has("modified")) {
+            try {
+                Object modifiedObj = json.get("modified");
+                if (modifiedObj instanceof Long || modifiedObj instanceof Integer) {
+                    return (long)modifiedObj;
+                }
+                if (modifiedObj instanceof JSONObject)
+                {
+                    JSONObject modifiedJson = (JSONObject) modifiedObj;
+                    if (modifiedJson.has("$date")) {
+                        long modified = modifiedJson.getLong("$date");
+                        json.remove("modified");
+                        json.put("modified", modified);
+                        return modified;
+                    }
+                }
+            } catch (JSONException e) {
+                log.error("Unhandled exception", e);
+            }
+        }
+        return null;
     }
 
     private boolean canContinue(boolean checkIsConnected) {

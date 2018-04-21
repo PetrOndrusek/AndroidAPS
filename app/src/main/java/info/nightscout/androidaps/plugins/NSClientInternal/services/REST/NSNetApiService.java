@@ -25,7 +25,8 @@ public interface NSNetApiService {
         @Query("collections") String collections,
         @Query("count") Integer count,
         @Query("includeDeleted") Boolean includeDeleted,
-        @Query("fromModified") String fromModified
+        @Query("fromMs") Long fromMs,
+        @Query("fromDate") String fromDate
     );
 
     @POST("{collection}")
