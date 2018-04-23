@@ -1,3 +1,4 @@
+
 package info.nightscout.androidaps.plugins.NSClientInternal.data;
 
 import org.json.JSONException;
@@ -12,7 +13,6 @@ public class NSTreatment {
 
     private JSONObject data;
     private String action = null; // "update", "remove" or null (add)
-    private String state = null; // "new", "modified", "deleted"
     private long modified = 0;
 
     public NSTreatment(JSONObject obj) {
@@ -20,13 +20,16 @@ public class NSTreatment {
         this.action = getStringOrNull("action");
         this.data.remove("action");
 
-        this.state = getStringOrNull("state");
-        if ("new".equals(this.state)) {
-            this.action = null;
-        } else if ("modified".equals(this.state)) {
-            this.action = "update";
-        } else if ("deleted".equals(this.state)) {
+        if (obj.has("deleted"))
+        {
             this.action = "remove";
+        }
+        else if (obj.has("updated"))
+        {
+            this.action = "update";
+        }
+        else {
+            this.action = null;
         }
 
         this.modified = getLong("modified", 0);
@@ -120,7 +123,6 @@ public class NSTreatment {
     }
 
     public String getAction() { return action; }
-    public String getState() { return state; }
     public long getModified() { return modified; }
     public JSONObject getData() { return data; }
     public String get_id() { return getStringOrNull("_id"); }

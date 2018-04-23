@@ -55,12 +55,20 @@ public class NSSgv {
     }
 
     public JSONObject getData () { return data; }
-    public Integer getMgdl () { return getIntegerOrNull("mgdl"); }
+    public Integer getMgdl () {
+        return data.has("mgdl")
+            ? getIntegerOrNull("mgdl")
+            : getIntegerOrNull("sgv");
+    }
     public Integer getFiltered () { return getIntegerOrNull("filtered"); }
     public Integer getUnfiltered () { return getIntegerOrNull("unfiltered"); }
     public Integer getNoise () { return getIntegerOrNull("noise"); }
     public Integer getRssi () { return getIntegerOrNull("rssi"); }
-    public Long getMills () { return getLongOrNull("mills"); }
+    public Long getMills () {
+        return data.has("mills")
+            ? getLongOrNull("mills")
+            : getLongOrNull("modified");
+    }
     public String getDevice () { return getStringOrNull("device"); }
     public String getDirection () { return getStringOrNull("direction"); }
     public String getId () { return getStringOrNull("_id"); }

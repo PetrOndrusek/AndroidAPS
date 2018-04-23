@@ -28,8 +28,11 @@ import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
 import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSAddAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSUpdateAck;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastCals;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastDeviceStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastFood;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastMbgs;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastSgvs;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastTreatment;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.AlarmAck;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.NSConfiguration;
@@ -285,8 +288,7 @@ public class RestTransportService extends AbstractTransportService {
         try {
             String collections = null; // = "all"
             Integer maxCount = null; // = 1000
-            Boolean includeDeleted = null; // = true
-            Call<ResponseBody> call = apiService.delta(collections, maxCount, includeDeleted, latestDateInReceivedData, null);
+            Call<ResponseBody> call = apiService.delta(latestDateInReceivedData, collections, maxCount, null);
             Response<ResponseBody> response = call.execute();
             if (response == null || !response.isSuccessful()) {
                 logError("Failed DOWNLOAD");
@@ -302,6 +304,11 @@ public class RestTransportService extends AbstractTransportService {
             if (data.has("devicestatus")) {
                 JSONArray devicestatuses = data.getJSONArray("devicestatus");
                 handleDevicestatuses(devicestatuses);
+            }
+
+            if (data.has("entries")) {
+                JSONArray entries = data.getJSONArray("entries");
+                handleEntries(entries);
             }
 
             return true;
@@ -378,6 +385,66 @@ public class RestTransportService extends AbstractTransportService {
                 }
             }
             BroadcastDeviceStatus.handleNewDeviceStatus(devicestatuses, MainApp.instance().getApplicationContext(), true);
+        }
+    }
+
+    private void handleEntries(JSONArray entries) {
+        if (entries.length() > 0) {
+            JSONArray mbgs = new JSONArray();
+            JSONArray cals = new JSONArray();
+            JSONArray sgvs = new JSONArray();
+
+            for (Integer index = 0; index < entries.length(); index++) {
+                try {
+                    JSONObject entry = entries.getJSONObject(index);
+
+                    if (entry.has("type"))
+                    {
+                        mUploadQueue.removeID(entry);
+
+                        String type = entry.getString("type");
+                        switch (type)
+                        {
+                            case "cal":
+                                cals.put(entry);
+                                break;
+
+                            case "mbg":
+                                mbgs.put(entry);
+                                break;
+
+                            case "sgv":
+                                sgvs.put(entry);
+                                break;
+                        }
+
+                        Long modified = getLong(entry, "modified");
+                        if (modified != null && modified > latestDateInReceivedData) {
+                            latestDateInReceivedData = modified;
+                        }
+                    }
+                } catch (JSONException e) {
+                    logError(e.getMessage());
+                }
+            }
+
+            if (cals.length() > 0)
+            {
+                BroadcastCals.handleNewCal(cals, MainApp.instance().getApplicationContext(), true);
+                EventNSClientNewLog.emit("DATA", "received " + cals.length() + " cals");
+            }
+            if (mbgs.length() > 0)
+            {
+                BroadcastMbgs.handleNewMbg(mbgs, MainApp.instance().getApplicationContext(), true);
+                EventNSClientNewLog.emit("DATA", "received " + mbgs.length() + " mbgs");
+            }
+            if (sgvs.length() > 0)
+            {
+                // removed notification dismiss (after 15 minutes), alarms are not yet supported
+
+                BroadcastSgvs.handleNewSgv(sgvs, MainApp.instance().getApplicationContext(), true);
+                EventNSClientNewLog.emit("DATA", "received " + sgvs.length() + " sgvs");
+            }
         }
     }
 

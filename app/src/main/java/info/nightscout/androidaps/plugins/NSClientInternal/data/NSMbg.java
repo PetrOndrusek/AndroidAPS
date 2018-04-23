@@ -13,8 +13,14 @@ public class NSMbg {
 
     public NSMbg(JSONObject json) {
         try {
-            date = json.getLong("mills");
-            mbg = json.getDouble("mgdl");
+            date = json.has("mills")
+                ? json.getLong("mills")
+                : json.getLong("modified");
+
+            mbg = json.has("mgdl")
+                ? json.getDouble("mgdl")
+                : json.getDouble("mbg");
+
             this.json = json.toString();
         } catch (JSONException e) {
             log.error("Unhandled exception", e);
