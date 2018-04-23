@@ -20,12 +20,11 @@ public interface NSNetApiService {
     @GET("{collection}")
     Call<ResponseBody> get(@Path("collection") String collection);
 
-    @GET("delta")
+    @GET("delta/{fromMs}")
     Call<ResponseBody> delta(
+        @Path("fromMs") Long fromMs,
         @Query("collections") String collections,
         @Query("count") Integer count,
-        @Query("includeDeleted") Boolean includeDeleted,
-        @Query("fromMs") Long fromMs,
         @Query("fromDate") String fromDate
     );
 
