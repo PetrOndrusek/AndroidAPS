@@ -1,6 +1,8 @@
 package info.nightscout.androidaps.plugins.NSClientInternal.services.REST;
 
+import android.content.Context;
 import android.os.Handler;
+import android.os.PowerManager;
 
 import com.google.common.base.Charsets;
 import com.google.common.hash.Hashing;
@@ -197,7 +199,7 @@ public class RestTransportService extends AbstractTransportService {
 
             EventNSClientNewLog.emit("NSCLIENT", "Starting batch");
 
-            uploadCycle();
+            syncCycle();
 
             EventNSClientNewLog.emit("NSCLIENT", "Batch completed");
         } catch (Exception ex) {
@@ -205,7 +207,7 @@ public class RestTransportService extends AbstractTransportService {
         }
     }
 
-    private void uploadCycle() {
+    private void syncCycle() {
 
         uploadChanges();
         downloadChanges();
@@ -221,7 +223,7 @@ public class RestTransportService extends AbstractTransportService {
                     DbRequest dbr = iterator.next();
                     if (dbr.action.equals("dbAdd")) {
                         dbAdd(dbr);
-                    }  else if (dbr.action.equals("dbRemove")) {
+                    } else if (dbr.action.equals("dbRemove")) {
                         dbRemove(dbr);
                     } /*else if (dbr.action.equals("dbUpdate")) {
                         NSUpdateAck updateAck = new NSUpdateAck(dbr.action, dbr._id);
@@ -241,6 +243,7 @@ public class RestTransportService extends AbstractTransportService {
     }
 
     private boolean dbAdd(DbRequest dbr) {
+        PowerManager.WakeLock wakeLock = acquireWakeLock();
         try {
             RequestBody body = RequestBody.create(MediaType.parse("application/json"), dbr.data);
             Call<ResponseBody> call = apiService.post(hashedApiSecret, dbr.collection, body);
@@ -267,15 +270,18 @@ public class RestTransportService extends AbstractTransportService {
 
             return true;
         } catch (IOException ex) {
-                logError(ex.getMessage());
+            logError(ex.getMessage());
             return false;
         } catch (JSONException ex) {
             logError(ex.getMessage());
             return false;
+        } finally {
+            if (wakeLock.isHeld()) wakeLock.release();
         }
     }
 
     private boolean dbRemove(DbRequest dbr) {
+        PowerManager.WakeLock wakeLock = acquireWakeLock();
         try {
             Call<ResponseBody> call = apiService.delete(hashedApiSecret, dbr.collection, dbr._id);
             Response<ResponseBody> response = call.execute();
@@ -291,6 +297,8 @@ public class RestTransportService extends AbstractTransportService {
         } catch (IOException ex) {
             logError(ex.getMessage());
             return false;
+        } finally {
+            if (wakeLock.isHeld()) wakeLock.release();
         }
     }
 
@@ -312,30 +320,34 @@ public class RestTransportService extends AbstractTransportService {
             colJson.put("from", lastDeltaDates.get(COL_ENTRIES));
             inputJson.put(COL_ENTRIES, colJson);
 
-            RequestBody body = RequestBody.create(MediaType.parse("application/json"), inputJson.toString());
-            Call<ResponseBody> call = apiService.delta(defaultCount, body);
-            Response<ResponseBody> response = call.execute();
-            if (response == null || !response.isSuccessful()) {
-                logError("Failed DOWNLOAD");
-                return false;
-            }
-            JSONObject data = new JSONObject(response.body().string());
+            PowerManager.WakeLock wakeLock = acquireWakeLock();
+            try {
+                RequestBody body = RequestBody.create(MediaType.parse("application/json"), inputJson.toString());
+                Call<ResponseBody> call = apiService.delta(defaultCount, body);
+                Response<ResponseBody> response = call.execute();
+                if (response == null || !response.isSuccessful()) {
+                    logError("Failed DOWNLOAD");
+                    return false;
+                }
+                JSONObject data = new JSONObject(response.body().string());
 
-            if (data.has("treatments")) {
-                JSONArray treatments = data.getJSONArray("treatments");
-                handleTreatments(treatments);
-            }
+                if (data.has("treatments")) {
+                    JSONArray treatments = data.getJSONArray("treatments");
+                    handleTreatments(treatments);
+                }
 
-            if (data.has("devicestatus")) {
-                JSONArray devicestatuses = data.getJSONArray("devicestatus");
-                handleDevicestatuses(devicestatuses);
-            }
+                if (data.has("devicestatus")) {
+                    JSONArray devicestatuses = data.getJSONArray("devicestatus");
+                    handleDevicestatuses(devicestatuses);
+                }
 
-            if (data.has("entries")) {
-                JSONArray entries = data.getJSONArray("entries");
-                handleEntries(entries);
+                if (data.has("entries")) {
+                    JSONArray entries = data.getJSONArray("entries");
+                    handleEntries(entries);
+                }
+            } finally {
+                if (wakeLock.isHeld()) wakeLock.release();
             }
-
             return true;
         } catch (Exception ex) {
             logError(ex.getMessage());
@@ -356,8 +368,13 @@ public class RestTransportService extends AbstractTransportService {
             JSONObject jsonTreatment = null;
             try {
                 jsonTreatment = treatments.getJSONObject(index);
+                if (!jsonTreatment.has("mills") && jsonTreatment.has("created")) {
+                    jsonTreatment.put("mills", jsonTreatment.get("created"));
+                }
+                if (!jsonTreatment.has("mills") && jsonTreatment.has("modified")) {
+                    jsonTreatment.put("mills", jsonTreatment.get("modified"));
+                }
                 NSTreatment treatment = new NSTreatment(jsonTreatment);
-
 
                 // remove from upload queue if it is stuck
                 mUploadQueue.removeID(jsonTreatment);
@@ -423,22 +440,50 @@ public class RestTransportService extends AbstractTransportService {
                 try {
                     JSONObject entry = entries.getJSONObject(index);
 
-                    if (entry.has("type"))
-                    {
+                    if (entry.has("type")) {
                         mUploadQueue.removeID(entry);
 
                         String type = entry.getString("type");
-                        switch (type)
-                        {
+                        switch (type) {
                             case "cal":
+                                if (!entry.has("date") && entry.has("created")) {
+                                    entry.put("date", entry.get("created"));
+                                }
+                                if (!entry.has("date") && entry.has("modified")) {
+                                    entry.put("date", entry.get("modified"));
+                                }
                                 cals.put(entry);
                                 break;
 
                             case "mbg":
+                                if (!entry.has("mbg") && entry.has("mgdl")) {
+                                    entry.put("mbg", entry.get("mgdl"));
+                                }
+                                if (!entry.has("mills") && entry.has("date")) {
+                                    entry.put("mills", entry.get("date"));
+                                }
+                                if (!entry.has("mills") && entry.has("created")) {
+                                    entry.put("mills", entry.get("created"));
+                                }
+                                if (!entry.has("mills") && entry.has("modified")) {
+                                    entry.put("mills", entry.get("modified"));
+                                }
                                 mbgs.put(entry);
                                 break;
 
                             case "sgv":
+                                if (!entry.has("mgdl") && entry.has("sgv")) {
+                                    entry.put("mgdl", entry.get("sgv"));
+                                }
+                                if (!entry.has("mills") && entry.has("date")) {
+                                    entry.put("mills", entry.get("date"));
+                                }
+                                if (!entry.has("mills") && entry.has("created")) {
+                                    entry.put("mills", entry.get("created"));
+                                }
+                                if (!entry.has("mills") && entry.has("modified")) {
+                                    entry.put("mills", entry.get("modified"));
+                                }
                                 sgvs.put(entry);
                                 break;
                         }
@@ -453,18 +498,15 @@ public class RestTransportService extends AbstractTransportService {
                 }
             }
 
-            if (cals.length() > 0)
-            {
+            if (cals.length() > 0) {
                 BroadcastCals.handleNewCal(cals, MainApp.instance().getApplicationContext(), true);
                 EventNSClientNewLog.emit("DATA", "received " + cals.length() + " cals");
             }
-            if (mbgs.length() > 0)
-            {
+            if (mbgs.length() > 0) {
                 BroadcastMbgs.handleNewMbg(mbgs, MainApp.instance().getApplicationContext(), true);
                 EventNSClientNewLog.emit("DATA", "received " + mbgs.length() + " mbgs");
             }
-            if (sgvs.length() > 0)
-            {
+            if (sgvs.length() > 0) {
                 // removed notification dismiss (after 15 minutes), alarms are not yet supported
 
                 BroadcastSgvs.handleNewSgv(sgvs, MainApp.instance().getApplicationContext(), true);
@@ -490,6 +532,13 @@ public class RestTransportService extends AbstractTransportService {
                 && batchScheduler.isRunning()
                 && !MainApp.getSpecificPlugin(NSClientPlugin.class).paused
                 && (!checkIsConnected || isConnected);
+    }
+
+    private PowerManager.WakeLock acquireWakeLock() {
+        PowerManager powerManager = (PowerManager) MainApp.instance().getApplicationContext().getSystemService(Context.POWER_SERVICE);
+        PowerManager.WakeLock wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RestTransportService");
+        wakeLock.acquire();
+        return wakeLock;
     }
 
     private void logError(String message) {
