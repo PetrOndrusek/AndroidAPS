@@ -24,7 +24,7 @@ public class NSTreatment {
         {
             this.action = "remove";
         }
-        else if (obj.has("updated"))
+        else if (obj.has("created"))
         {
             this.action = "update";
         }
