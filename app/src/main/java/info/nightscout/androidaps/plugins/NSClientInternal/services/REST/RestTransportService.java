@@ -17,6 +17,8 @@ import java.sql.SQLException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -63,10 +65,14 @@ public class RestTransportService extends AbstractTransportService {
     private String hashedApiSecret = null;
     private Thread workerThread = null;
     private StoppableScheduler batchScheduler = null;
-    private long latestDateInReceivedData = 0;
+
+    private Map<String, Long> lastDeltaDates = new HashMap<String, Long>();
 
     private DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
 
+    private static final String COL_ENTRIES = "entries";
+    private static final String COL_DEVICESTATUS = "devicestatus";
+    private static final String COL_TREATMENTS = "treatments";
 
     public RestTransportService(NSConfiguration nsConfig, NSClientService nsClientService, Handler handler, UploadQueue uploadQueue) {
         registerBus();
@@ -83,7 +89,12 @@ public class RestTransportService extends AbstractTransportService {
         try {
             isInitialized = false;
             workerThread = null;
-            latestDateInReceivedData = System.currentTimeMillis() - (6 * 3600 * 1000);
+
+            lastDeltaDates = new HashMap<String, Long>();
+            long startDeltaDate = System.currentTimeMillis() - (6 * 3600 * 1000);
+            lastDeltaDates.put(COL_ENTRIES, startDeltaDate);
+            lastDeltaDates.put(COL_DEVICESTATUS, startDeltaDate);
+            lastDeltaDates.put(COL_TREATMENTS, startDeltaDate);
 
             EventNSClientNewLog.emit("NSCLIENT", "initialize REST");
             EventNSClientStatus.emit("REST Initializing");
@@ -268,7 +279,7 @@ public class RestTransportService extends AbstractTransportService {
         try {
             Call<ResponseBody> call = apiService.delete(hashedApiSecret, dbr.collection, dbr._id);
             Response<ResponseBody> response = call.execute();
-            if (response == null || !response.isSuccessful()) {
+            if (response == null || (!response.isSuccessful() && response.raw().code() != 404)) {
                 logError("Failed DBREMOVE " + dbr.collection + " " + dbr._id);
                 return false;
             }
@@ -286,9 +297,23 @@ public class RestTransportService extends AbstractTransportService {
     private boolean downloadChanges() {
 
         try {
-            String collections = null; // = "all"
-            Integer maxCount = null; // = 1000
-            Call<ResponseBody> call = apiService.delta(latestDateInReceivedData, collections, maxCount, null);
+            Integer defaultCount = 1000;
+            JSONObject inputJson = new JSONObject();
+
+            JSONObject colJson = new JSONObject();
+            colJson.put("from", lastDeltaDates.get(COL_TREATMENTS));
+            inputJson.put(COL_TREATMENTS, colJson);
+
+            colJson = new JSONObject();
+            colJson.put("from", lastDeltaDates.get(COL_DEVICESTATUS));
+            inputJson.put(COL_DEVICESTATUS, colJson);
+
+            colJson = new JSONObject();
+            colJson.put("from", lastDeltaDates.get(COL_ENTRIES));
+            inputJson.put(COL_ENTRIES, colJson);
+
+            RequestBody body = RequestBody.create(MediaType.parse("application/json"), inputJson.toString());
+            Call<ResponseBody> call = apiService.delta(defaultCount, body);
             Response<ResponseBody> response = call.execute();
             if (response == null || !response.isSuccessful()) {
                 logError("Failed DOWNLOAD");
@@ -346,8 +371,8 @@ public class RestTransportService extends AbstractTransportService {
                         removedTreatments.put(jsonTreatment);
                 }
 
-                if (treatment.getModified() > latestDateInReceivedData) {
-                    latestDateInReceivedData = treatment.getModified();
+                if (treatment.getModified() > lastDeltaDates.get(COL_TREATMENTS)) {
+                    lastDeltaDates.put(COL_TREATMENTS, treatment.getModified());
                 }
             } catch (JSONException ex) {
                 logError(ex.getMessage());
@@ -377,8 +402,8 @@ public class RestTransportService extends AbstractTransportService {
                     // remove from upload queue if Ack is failing
                     mUploadQueue.removeID(jsonStatus);
 
-                    if (modified != null && modified > latestDateInReceivedData) {
-                        latestDateInReceivedData = modified;
+                    if (modified != null && modified > lastDeltaDates.get(COL_DEVICESTATUS)) {
+                        lastDeltaDates.put(COL_DEVICESTATUS, modified);
                     }
                 } catch (JSONException e) {
                     logError(e.getMessage());
@@ -419,8 +444,8 @@ public class RestTransportService extends AbstractTransportService {
                         }
 
                         Long modified = getLong(entry, "modified");
-                        if (modified != null && modified > latestDateInReceivedData) {
-                            latestDateInReceivedData = modified;
+                        if (modified != null && modified > lastDeltaDates.get(COL_ENTRIES)) {
+                            lastDeltaDates.put(COL_ENTRIES, modified);
                         }
                     }
                 } catch (JSONException e) {

@@ -20,12 +20,10 @@ public interface NSNetApiService {
     @GET("{collection}")
     Call<ResponseBody> get(@Path("collection") String collection);
 
-    @GET("delta/{fromMs}")
+    @POST("delta")
     Call<ResponseBody> delta(
-        @Path("fromMs") Long fromMs,
-        @Query("collections") String collections,
         @Query("count") Integer count,
-        @Query("fromDate") String fromDate
+        @Body RequestBody body
     );
 
     @POST("{collection}")

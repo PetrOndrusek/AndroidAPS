@@ -65,9 +65,13 @@ public class NSSgv {
     public Integer getNoise () { return getIntegerOrNull("noise"); }
     public Integer getRssi () { return getIntegerOrNull("rssi"); }
     public Long getMills () {
-        return data.has("mills")
-            ? getLongOrNull("mills")
-            : getLongOrNull("modified");
+        if (data.has("mills"))
+            return getLongOrNull("mills");
+
+        if (data.has("date"))
+            return getLongOrNull("date");
+
+        return getLongOrNull("modified");
     }
     public String getDevice () { return getStringOrNull("device"); }
     public String getDirection () { return getStringOrNull("direction"); }
