@@ -193,6 +193,10 @@ public class DataService extends IntentService {
         bgReading.raw = bundle.getDouble(Intents.EXTRA_RAW);
 
         MainApp.getDbHelper().createIfNotExists(bgReading, "XDRIP");
+
+        if (SP.getBoolean(R.string.key_ns_rest_uploadBg, false)) {
+            NSUpload.uploadBg(bgReading, "xdrip");
+        }
     }
 
     private void handleNewDataFromGlimp(Intent intent) {
@@ -231,7 +235,7 @@ public class DataService extends IntentService {
                 bgReading.raw = 0;
                 boolean isNew = MainApp.getDbHelper().createIfNotExists(bgReading, "DexcomG5");
                 if (isNew && SP.getBoolean(R.string.key_dexcomg5_nsupload, false)) {
-                    NSUpload.uploadBg(bgReading);
+                    NSUpload.uploadBg(bgReading, "DexcomG5");
                 }
                 if (isNew && SP.getBoolean(R.string.key_dexcomg5_xdripupload, false)) {
                     NSUpload.sendToXdrip(bgReading);

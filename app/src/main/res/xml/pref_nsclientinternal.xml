@@ -46,7 +46,7 @@
 
         <SwitchPreference
             android:defaultValue="false"
-            android:key="@string/key_ns_enablerest"
+            android:key="@string/key_ns_rest_enable"
             android:title="@string/ns_enablerest_title"
             android:summary="@string/ns_enablerest_summary"/>
 

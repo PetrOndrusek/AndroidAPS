@@ -107,7 +107,7 @@ public class NSClientService extends Service {
         if (ev.isChanged(R.string.key_nsclientinternal_url) ||
                 ev.isChanged(R.string.key_nsclientinternal_api_secret) ||
                 ev.isChanged(R.string.key_nsclientinternal_paused) ||
-                ev.isChanged(R.string.key_ns_enablerest)
+                ev.isChanged(R.string.key_ns_rest_enable)
                 ) {
             destroy();
             initialize();
@@ -157,7 +157,8 @@ public class NSClientService extends Service {
         conf.url = SP.getString(R.string.key_nsclientinternal_url, "");
         conf.apiSecret = SP.getString(R.string.key_nsclientinternal_api_secret, "");
         conf.device = SP.getString("careportal_enteredby", "");
-        conf.restEnabled = SP.getBoolean(R.string.key_ns_enablerest, false);
+        conf.restEnabled = SP.getBoolean(R.string.key_ns_rest_enable, false);
+        conf.uploadBg = SP.getBoolean(R.string.key_ns_rest_uploadBg, false);
         return conf;
     }
 

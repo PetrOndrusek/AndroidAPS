@@ -67,6 +67,7 @@ public class RestTransportService extends AbstractTransportService {
     private String hashedApiSecret = null;
     private Thread workerThread = null;
     private StoppableScheduler batchScheduler = null;
+    private String apiUrl = null;
 
     private Map<String, Long> lastDeltaDates = new HashMap<String, Long>();
 
@@ -75,6 +76,7 @@ public class RestTransportService extends AbstractTransportService {
     private static final String COL_ENTRIES = "entries";
     private static final String COL_DEVICESTATUS = "devicestatus";
     private static final String COL_TREATMENTS = "treatments";
+    private static final String COL_PROFILE = "profile";
 
     public RestTransportService(NSConfiguration nsConfig, NSClientService nsClientService, Handler handler, UploadQueue uploadQueue) {
         registerBus();
@@ -97,6 +99,7 @@ public class RestTransportService extends AbstractTransportService {
             lastDeltaDates.put(COL_ENTRIES, startDeltaDate);
             lastDeltaDates.put(COL_DEVICESTATUS, startDeltaDate);
             lastDeltaDates.put(COL_TREATMENTS, startDeltaDate);
+            lastDeltaDates.put(COL_PROFILE, startDeltaDate);
 
             EventNSClientNewLog.emit("NSCLIENT", "initialize REST");
             EventNSClientStatus.emit("REST Initializing");
@@ -118,7 +121,7 @@ public class RestTransportService extends AbstractTransportService {
                 return;
             }
 
-            String apiUrl = nsConfig.url;
+            apiUrl = nsConfig.url;
             if (!apiUrl.endsWith("/")) {
                 apiUrl += "/";
             }
@@ -157,7 +160,7 @@ public class RestTransportService extends AbstractTransportService {
             workerThread = new Thread(batchScheduler);
             workerThread.start();
         } catch (Exception ex) {
-            logError(ex.getMessage());
+            logError(ex, "Error initializing");
             isInitialized = false;
         }
     }
@@ -176,7 +179,7 @@ public class RestTransportService extends AbstractTransportService {
             EventNSClientNewLog.emit("NSCLIENT", "destroy REST");
             EventNSClientStatus.emit("REST Stopped");
         } catch (Exception ex) {
-            logError(ex.getMessage());
+            logError(ex, "Error destroying");
         }
     }
 
@@ -203,14 +206,36 @@ public class RestTransportService extends AbstractTransportService {
 
             EventNSClientNewLog.emit("NSCLIENT", "Batch completed");
         } catch (Exception ex) {
-            logError(ex.getMessage());
+            logError(ex, "Error in batchCycle");
         }
     }
 
     private void syncCycle() {
 
+        if (!getStatus()) {
+            return;
+        }
+
         uploadChanges();
         downloadChanges();
+    }
+
+    private boolean getStatus() {
+        Call<ResponseBody> call = apiService.status(hashedApiSecret);
+        Response<ResponseBody> response = null;
+        String errorMessage = "Failed STATUS from " + apiUrl;
+        try {
+            response = call.execute();
+        } catch (IOException ex) {
+            logError(ex, errorMessage);
+            return false;
+        }
+        if (response == null || (!response.isSuccessful())) {
+            logError(errorMessage);
+            return false;
+        }
+
+        return true;
     }
 
     private void uploadChanges() {
@@ -269,11 +294,8 @@ public class RestTransportService extends AbstractTransportService {
             }
 
             return true;
-        } catch (IOException ex) {
-            logError(ex.getMessage());
-            return false;
-        } catch (JSONException ex) {
-            logError(ex.getMessage());
+        } catch (Exception ex) {
+            logError(ex, "Error dbAdd");
             return false;
         } finally {
             if (wakeLock.isHeld()) wakeLock.release();
@@ -295,7 +317,7 @@ public class RestTransportService extends AbstractTransportService {
 
             return true;
         } catch (IOException ex) {
-            logError(ex.getMessage());
+            logError(ex, "Error dbRemove");
             return false;
         } finally {
             if (wakeLock.isHeld()) wakeLock.release();
@@ -323,7 +345,7 @@ public class RestTransportService extends AbstractTransportService {
             PowerManager.WakeLock wakeLock = acquireWakeLock();
             try {
                 RequestBody body = RequestBody.create(MediaType.parse("application/json"), inputJson.toString());
-                Call<ResponseBody> call = apiService.delta(defaultCount, body);
+                Call<ResponseBody> call = apiService.delta(hashedApiSecret, defaultCount, body);
                 Response<ResponseBody> response = call.execute();
                 if (response == null || !response.isSuccessful()) {
                     logError("Failed DOWNLOAD");
@@ -345,12 +367,17 @@ public class RestTransportService extends AbstractTransportService {
                     JSONArray entries = data.getJSONArray("entries");
                     handleEntries(entries);
                 }
+
+                if (data.has("profile")) {
+                    JSONArray profiles = data.getJSONArray("profile");
+                    handleProfiles(profiles);
+                }
             } finally {
                 if (wakeLock.isHeld()) wakeLock.release();
             }
             return true;
         } catch (Exception ex) {
-            logError(ex.getMessage());
+            logError(ex, "Error in download");
             return false;
         }
     }
@@ -392,7 +419,7 @@ public class RestTransportService extends AbstractTransportService {
                     lastDeltaDates.put(COL_TREATMENTS, treatment.getModified());
                 }
             } catch (JSONException ex) {
-                logError(ex.getMessage());
+                logError(ex, "Error handling treatments");
             }
         }
 
@@ -422,8 +449,8 @@ public class RestTransportService extends AbstractTransportService {
                     if (modified != null && modified > lastDeltaDates.get(COL_DEVICESTATUS)) {
                         lastDeltaDates.put(COL_DEVICESTATUS, modified);
                     }
-                } catch (JSONException e) {
-                    logError(e.getMessage());
+                } catch (JSONException ex) {
+                    logError(ex, "Error handling devicestatus");
                 }
             }
             BroadcastDeviceStatus.handleNewDeviceStatus(devicestatuses, MainApp.instance().getApplicationContext(), true);
@@ -493,8 +520,8 @@ public class RestTransportService extends AbstractTransportService {
                             lastDeltaDates.put(COL_ENTRIES, modified);
                         }
                     }
-                } catch (JSONException e) {
-                    logError(e.getMessage());
+                } catch (JSONException ex) {
+                    logError(ex, "Error handling entries");
                 }
             }
 
@@ -514,6 +541,28 @@ public class RestTransportService extends AbstractTransportService {
             }
         }
     }
+
+    private void handleProfiles(JSONArray profiles) {
+        if (profiles.length() > 0) {
+            EventNSClientNewLog.emit("DATA", "received " + profiles.length() + "profiles");
+
+            for (Integer index = 0; index < profiles.length(); index++) {
+                try {
+                    JSONObject jsonProfile = profiles.getJSONObject(index);
+                    Long modified = getLong(jsonProfile, "modified");
+
+                    // TODO
+
+                    if (modified != null && modified > lastDeltaDates.get(COL_PROFILE)) {
+                        lastDeltaDates.put(COL_PROFILE, modified);
+                    }
+                } catch (JSONException ex) {
+                    logError(ex, "Error handling profiles");
+                }
+            }
+        }
+    }
+
 
     private static Long getLong(JSONObject data, String key) {
         if (data.has(key)) {
@@ -539,6 +588,12 @@ public class RestTransportService extends AbstractTransportService {
         PowerManager.WakeLock wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RestTransportService");
         wakeLock.acquire();
         return wakeLock;
+    }
+
+    private void logError(Exception ex, String defaultMessage) {
+        String message = ex.getMessage();
+        logError(message != null ? message
+                : defaultMessage + " (" + ex.getClass().getName() + ")");
     }
 
     private void logError(String message) {

@@ -17,27 +17,51 @@ import retrofit2.http.Query;
  */
 
 public interface NSNetApiService {
+    @GET("status")
+    Call<ResponseBody> status(
+        @Header("api-secret") String secretHash
+    );
+
     @GET("{collection}")
-    Call<ResponseBody> get(@Path("collection") String collection);
+    Call<ResponseBody> get(
+        @Header("api-secret") String secretHash,
+        @Path("collection") String collection
+    );
+
+    @GET("{collection}")
+    Call<ResponseBody> get(
+        @Header("api-secret") String secretHash,
+        @Path("collection") String collection,
+        @Query("count") Integer count,
+        @Query("fromDate") String fromDate,
+        @Query("fromMs") Long fromMs
+    );
 
     @POST("delta")
     Call<ResponseBody> delta(
+        @Header("api-secret") String secretHash,
         @Query("count") Integer count,
         @Body RequestBody body
     );
 
     @POST("{collection}")
-    Call<ResponseBody> post(@Header("api-secret") String secretHash,
-                            @Path("collection") String collection,
-                            @Body RequestBody body);
+    Call<ResponseBody> post(
+        @Header("api-secret") String secretHash,
+        @Path("collection") String collection,
+        @Body RequestBody body
+    );
 
     @PUT("{collection}")
-    Call<ResponseBody> put(@Header("api-secret") String secretHash,
-                           @Path("collection") String collection,
-                           @Body RequestBody body);
+    Call<ResponseBody> put(
+        @Header("api-secret") String secretHash,
+        @Path("collection") String collection,
+        @Body RequestBody body
+    );
 
     @DELETE("{collection}/{id}")
-    Call<ResponseBody> delete(@Header("api-secret") String secretHash,
-                              @Path("collection") String collection,
-                              @Path("id") String id);
+    Call<ResponseBody> delete(
+        @Header("api-secret") String secretHash,
+        @Path("collection") String collection,
+        @Path("id") String id
+    );
 }
