@@ -25,6 +25,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import info.nightscout.androidaps.MainApp;
+import info.nightscout.androidaps.data.ProfileStore;
 import info.nightscout.androidaps.db.DatabaseHelper;
 import info.nightscout.androidaps.db.DbRequest;
 import info.nightscout.androidaps.db.Treatment;
@@ -36,6 +37,7 @@ import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastC
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastDeviceStatus;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastFood;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastMbgs;
+import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastProfile;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastSgvs;
 import info.nightscout.androidaps.plugins.NSClientInternal.broadcasts.BroadcastTreatment;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.AlarmAck;
@@ -99,7 +101,7 @@ public class RestTransportService extends AbstractTransportService {
             lastDeltaDates.put(COL_ENTRIES, startDeltaDate);
             lastDeltaDates.put(COL_DEVICESTATUS, startDeltaDate);
             lastDeltaDates.put(COL_TREATMENTS, startDeltaDate);
-            lastDeltaDates.put(COL_PROFILE, startDeltaDate);
+            lastDeltaDates.put(COL_PROFILE, (long)0); // send profiles on every init
 
             EventNSClientNewLog.emit("NSCLIENT", "initialize REST");
             EventNSClientStatus.emit("REST Initializing");
@@ -342,6 +344,10 @@ public class RestTransportService extends AbstractTransportService {
             colJson.put("from", lastDeltaDates.get(COL_ENTRIES));
             inputJson.put(COL_ENTRIES, colJson);
 
+            colJson = new JSONObject();
+            colJson.put("from", lastDeltaDates.get(COL_PROFILE));
+            inputJson.put(COL_PROFILE, colJson);
+
             PowerManager.WakeLock wakeLock = acquireWakeLock();
             try {
                 RequestBody body = RequestBody.create(MediaType.parse("application/json"), inputJson.toString());
@@ -544,14 +550,15 @@ public class RestTransportService extends AbstractTransportService {
 
     private void handleProfiles(JSONArray profiles) {
         if (profiles.length() > 0) {
-            EventNSClientNewLog.emit("DATA", "received " + profiles.length() + "profiles");
+            EventNSClientNewLog.emit("DATA", "received profiles");
 
             for (Integer index = 0; index < profiles.length(); index++) {
                 try {
                     JSONObject jsonProfile = profiles.getJSONObject(index);
                     Long modified = getLong(jsonProfile, "modified");
 
-                    // TODO
+                    ProfileStore profileStore = new ProfileStore(jsonProfile);
+                    BroadcastProfile.handleNewTreatment(profileStore, MainApp.instance().getApplicationContext(), true);
 
                     if (modified != null && modified > lastDeltaDates.get(COL_PROFILE)) {
                         lastDeltaDates.put(COL_PROFILE, modified);
@@ -562,7 +569,6 @@ public class RestTransportService extends AbstractTransportService {
             }
         }
     }
-
 
     private static Long getLong(JSONObject data, String key) {
         if (data.has(key)) {
