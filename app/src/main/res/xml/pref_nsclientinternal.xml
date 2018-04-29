@@ -44,11 +44,36 @@
             android:title="@string/ns_localbroadcasts_title"
             android:summary="@string/ns_localbroadcasts"/>
 
-        <SwitchPreference
-            android:defaultValue="false"
-            android:key="@string/key_ns_rest_enable"
-            android:title="@string/ns_enablerest_title"
-            android:summary="@string/ns_enablerest_summary"/>
+        <PreferenceScreen android:title="@string/ns_rest_options">
+
+            <SwitchPreference
+                android:defaultValue="false"
+                android:key="@string/key_ns_rest_enable"
+                android:title="@string/ns_rest_enable_title"
+                android:summary="@string/ns_rest_enable_summary"/>
+
+            <SwitchPreference
+                android:defaultValue="false"
+                android:key="@string/key_ns_rest_upload_bg"
+                android:title="@string/ns_rest_upload_bg_title"
+                android:summary="@string/ns_rest_upload_bg_summary"
+                android:dependency="@string/key_ns_rest_enable"/>
+
+            <com.andreabaccega.widget.ValidatingEditTextPreference
+                validate:testType="numericRange"
+                validate:minNumber="10"
+                validate:maxNumber="900"
+                android:digits="0123456789"
+                android:defaultValue="60"
+                android:selectAllOnFocus="true"
+                android:singleLine="true"
+                android:inputType="number"
+                android:maxLines="20"
+                android:title="@string/ns_rest_sleep_seconds_title"
+                android:dependency="@string/key_ns_rest_enable"
+                android:key="@string/key_ns_rest_sleep_seconds" />
+
+        </PreferenceScreen>
 
         <PreferenceScreen android:title="@string/ns_alarmoptions">
 

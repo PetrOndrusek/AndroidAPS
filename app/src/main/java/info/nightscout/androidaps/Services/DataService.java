@@ -194,7 +194,7 @@ public class DataService extends IntentService {
 
         MainApp.getDbHelper().createIfNotExists(bgReading, "XDRIP");
 
-        if (SP.getBoolean(R.string.key_ns_rest_uploadBg, false)) {
+        if (SP.getBoolean(R.string.key_ns_rest_upload_bg, false)) {
             NSUpload.uploadBg(bgReading, "xdrip");
         }
     }

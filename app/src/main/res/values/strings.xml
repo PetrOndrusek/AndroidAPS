@@ -548,8 +548,6 @@
     <string name="ns_logappstartedevent">Log app start to NS</string>
     <string name="key_ns_logappstartedevent" translatable="false">ns_logappstartedevent</string>
     <string name="key_ns_localbroadcasts" translatable="false">nsclient_localbroadcasts</string>
-    <string name="key_ns_rest_enable" translatable="false">ns_rest_enable</string>
-    <string name="key_ns_rest_uploadBg" translatable="false">ns_rest_uploadBg</string>
     <string name="restartingapp">Exiting application to apply settings.</string>
     <string name="danarv2pump">DanaRv2</string>
     <string name="configbuilder_insulin">Insulin</string>
@@ -645,8 +643,16 @@
     <string name="combopump_shortname" translatable="false">COMBO</string>
     <string name="ns_localbroadcasts">Enable broadcasts to other apps (like xDrip).</string>
     <string name="ns_localbroadcasts_title">Enable local Broadcasts.</string>
-    <string name="ns_enablerest_title">Use REST API (Experimental)</string>
-    <string name="ns_enablerest_summary">Use lightweight version of communication saving battery and bandwidth, but loosing some responsivenesss.</string>
+    <string name="ns_rest_options">REST API options</string>
+    <string name="key_ns_rest_enable" translatable="false">ns_rest_enable</string>
+    <string name="ns_rest_enable_title">Use REST API (Experimental)</string>
+    <string name="ns_rest_enable_summary">Use lightweight version of communication saving battery and bandwidth, but loosing some responsivenesss.</string>
+    <string name="key_ns_rest_upload_bg" translatable="false">ns_rest_upload_bg</string>
+    <string name="ns_rest_upload_bg_title">Upload BGs to NS</string>
+    <string name="ns_rest_upload_bg_summary">ns_rest_sleep_seconds</string>
+    <string name="key_ns_rest_sleep_seconds" translatable="false">ns_rest_sleep_seconds</string>
+    <string name="ns_rest_sleep_seconds_title">Seconds to sleep between cycles</string>
+    <string name="ns_rest_sleep_seconds_summary"></string>
     <string name="careportal_activity_label">ACTIVITY &amp; FEEDBACK</string>
     <string name="careportal_carbsandbolus_label">CARBS &amp; BOLUS</string>
     <string name="careportal_cgm_label">CGM &amp; OPENAPS</string>
