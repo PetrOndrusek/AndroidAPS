@@ -233,7 +233,12 @@ public class RestTransportService extends AbstractTransportService {
             return false;
         }
         if (response == null || (!response.isSuccessful())) {
-            logError(errorMessage);
+            if (response.raw().code() == 401) {
+                logError("Authentication failure (bad API Secret?)");
+            }
+            else {
+                logError(errorMessage);
+            }
             return false;
         }
 
