@@ -174,8 +174,8 @@
     <string name="absolute">Absolut</string>
     <string name="smscommunicator_bolusfailed">Bolus fehlgeschlagen</string>
     <string name="canceltemp">TBR abbrechen</string>
-    <string name="careportal_temporarytarget">Temoräres Ziel</string>
-    <string name="careportal_temporarytargetcancel">Temoräres Ziel abbrechen</string>
+    <string name="careportal_temporarytarget">Temporäres Ziel</string>
+    <string name="careportal_temporarytargetcancel">Temporäres Ziel abbrechen</string>
     <string name="comment">Kommentar</string>
     <string name="connected">Verbunden</string>
     <string name="connecting">Verbinden</string>
@@ -331,7 +331,6 @@
     <string name="activity">Aktivität</string>
     <string name="adult">Erwachsener</string>
     <string name="advancedsettings_title">Erweiterte Einstellungen</string>
-    <string name="app_name">AndroidAPS</string>
     <string name="basal_short">BAS</string>
     <string name="basal_step">Basal-Schritt</string>
     <string name="basalvaluebelowminimum">Wert der Basalrate unter Minimum. Profil nicht gesetzt!</string>
@@ -552,7 +551,7 @@
     <string name="openapsama_autosens_period_summary">Anzahl der vergangenen Stunden, die verwendet werden, um die Sensitivität zu erkennen (Zeit, in der KH resorbiert werden, ist nicht berücksichtigt)</string>
     <string name="objectives_2_gate">Entscheide anhand von dieser Erfahrung, wie hoch max Basal sein sollte, und übernehme den Wert in die Pumpen- und AAPS-Einstellungen</string>
     <string name="objectives_3_gate">Erprobe den Closed Loop Modus mit max IOB = 0 für ein paar Tage, ohne zu viele Unterzuckerungen zu haben</string>
-    <string name="objectives_3_objective">Starte den Closed Loop Modus mit Abschaltung bei niedrigen Werte</string>
+    <string name="objectives_3_objective">Starte den Closed Loop Modus mit Abschaltung bei niedrigen Werten</string>
     <string name="objectives_4_gate">Verwende es ein paar Tage und zumindest eine Nacht ohne Niedrig-Alarme (UZ), bevor du den BZ-Zielbereich senkst</string>
     <string name="objectives_4_objective">Fein-Einstellung des Closed-Loops, Erhöhen von max IOB über 0 und langsames Heruntersetzen des Zielbereichs</string>
     <string name="objectives_5_gate">Eine Woche erfolgreiches Loopen am Tag mit regelmäßiger Kohlenhydrat-Eingabe</string>
@@ -564,10 +563,10 @@
     <string name="insulin_peak_time">Peak Time [min]</string>
     <string name="insulin_oref_peak">IOB Curve Peak Time</string>
     <string name="free_peak_oref">Free-Peak Oref</string>
-    <string formatted="false" name="dia_too_short">DIA von %s ist zu kurz - AAPS nutzt stattdessen %s!</string>
+    <string formatted="false" name="dia_too_short">DIA von %f ist zu kurz - AAPS nutzt stattdessen %f!</string>
     <string name="danar_stats_warning_Message">Möglicherweise ungenau, wenn zum Befüllen ein Bolus verwendet wurde!</string>
     <string name="danar_stats_ratio">Verhältnis</string>
-    <string name="activate_profile">AKTIVIERE PROFIL</string>
+    <string name="activate_profile">Aktiviere profil</string>
     <string name="activity_duration">Aktivitätsdauer</string>
     <string name="activity_target">Aktivitätsziel</string>
     <string name="bloodsugarmeasurementalert">BZ-Messung</string>
@@ -583,7 +582,7 @@
     <string name="danar_setbasalstep001">Setzte Basalschritt zu 0.01 IE/h</string>
     <string name="danar_stats_tbb">Tägl. Basalmenge</string>
     <string name="danar_stats_tbb2">Tägl. Basalmenge * 2</string>
-    <string name="danar_stats_tdd">Tägl. Gesamtdosis</string>
+    <string name="danar_stats_tdd">TDD</string>
     <string name="danars_nodeviceavailable">Gerät noch nicht gefunden</string>
     <string name="danarspump">DanaRS</string>
     <string name="danarspump_shortname">Dana</string>
@@ -666,7 +665,6 @@
     <string name="combo_pump_state_suspended_by_user">Gestoppt (Benutzer)</string>
     <string name="combo_pump_state_suspended_due_to_error">Gestoppt (Fehler)</string>
     <string name="combo_pump_state_running">In Betrieb</string>
-    <string name="combo_tdds">TDDS</string>
     <string name="combo_programming_bolus">Bolusabgabe wird vorbereitet</string>
     <string name="combo_pump_action_cancelling_tbr">TBR wird abgebrochen</string>
     <string name="combo_pump_action_setting_tbr">TBR wird gesetzt (%d%% / %d Min.)</string>
@@ -680,7 +678,6 @@
     <string name="combo_error_bolus_verification_failed">Der abgegebene Bolus konnte nicht bestätigt werden. Bitte prüfe auf der Pumpe, ob ein Bolus abgegeben wurde und erstelle einen Eintrag im Careportal falls nötig.</string>
     <string name="combo_error_no_bolus_delivered">Die Bolusabgabe ist fehlgeschlagen: Es wurde scheinbar kein Bolus abgegeben. Bitte prüfe auf der Pumpe, ob ein Bolus abgegeben wurde. Um doppelte Boli durch Programmfehler zu vermeiden, werden Boli nicht automatisch wiederholt.</string>
     <string name="combo_error_partial_bolus_delivered">Wegen eines Fehlers wurden nur %.2f IE von den angeforderten %.2f IE abgegeben. Bitte prüfe den abgegebenen Bolus auf der Pumpe.</string>
-    <string name="combo_history">Historie</string>
     <string name="combo_pump_action_refreshing">Status wird aktualisiert</string>
     <string name="combo_pump_state_initializing">Die Pumpe wird initialisiert</string>
     <string name="combo_pump_connected_now">Jetzt</string>
@@ -689,19 +686,13 @@
     <string name="combo_reservoir_empty">Leer</string>
     <string name="combo_reservoir_low">Niedrig</string>
     <string name="combo_reservoir_normal">Normal</string>
-    <string name="combo_tdd_average">Durchschnitt: %3.1f IE</string>
-    <string name="combo_tdd_maximum">Maximum: %3.1f IE</string>
-    <string name="combo_tdd_minimum">Minimum: %3.1f IE</string>
     <string name="combo_pump_unsupported_operation">Diese Aktion wird von der Pumpe nicht unterstützt</string>
-    <string name="combo_pump_alerts">Alarme</string>
     <string name="combo_pump_battery_low_warrning">Die Batterie in der Pumpe ist fast leer</string>
     <string name="combo_pump_cartridge_low_warrning">Das Reservoir in der Pumpe ist fast leer</string>
     <string name="combo_is_in_error_state">Die Pumpe zeigt einen Fehler an E%d: %s</string>
     <string name="combo_force_disabled_notification">Unsichere Verwendung: In der Pumpe ist nicht das erste Basalratenprofil gewählt. Der Loop wird deaktiviert bis dies korrigiert ist.</string>
     <string name="combo_low_suspend_forced_notification">Unsichere Verwendung: Ein erweiterter oder Multiwave-Bolus ist aktiv. Der Loop wird für die nächsten 6 Stunden kein zusätzliches Insulin abgeben.</string>
-    <string name="combo_no_alert_data_note">Um die Fehlerhistorie der Pumpe zu lesen, drücke lange auf ALARME.</string>
     <string name="combo_notification_check_time_date">Bitte aktualisiere die Uhrzeit der Pumpe</string>
-    <string name="combo_no_tdd_data_note">Um die TDD-Statistik der Pumpe zu lesen, drücken Sie den TDDS Knopf lange.\nWARNUNG: Es gibt einen bekannten Fehler in der Pumpe der dazu führt, dass die Pumpe nach dieser Aktion erst wieder Verbindungen annimmt, wenn auf der Pumpe selbst ein Konpf gedrückt wird. Aus diesem Grund sollte diese Aktion nicht durchgeführt werden.</string>
     <string name="combo_reservoir_level_insufficient_for_bolus">Nicht mehr genug Insulin im Reservoir für den Bolus</string>
     <string name="yes">Ja</string>
     <string name="no">Nein</string>
@@ -723,7 +714,6 @@
     <string name="openapsama_link_to_preferncejson_doc_txt">Achtung! Normalerweise musst Du diese Werte nicht ändern. Bitte KLICKE HIER und LESE den Text. Verändere Werte erst, wenn Du den Inhalt des Textes verstanden hast.</string>
     <string name="combo_actvity_reading_basal_profile">Basalratenprofil wird gelesen</string>
     <string name="pump_basebasalrate">%.2f IE/h</string>
-    <string name="combo_read_full_history_info">Drücke den Button lange, um die gesamte Historie und das Basal-Profil der Pumpe auszulesen. Dies ist eigentlich unnötig, weil die Historie regelmäßig gelesen wird. Hilfreich kann dies jedoch sein, wenn Datum und Zeit grundlegend verändert wurden oder die Pumpe ausgetauscht wurde.</string>
     <string name="combo_error_no_connection_no_bolus_delivered">Keine Verbindung zur Pumpe: Es wurde kein Bolus abgegeben.</string>
     <string name="extendedbolusdeliveryerror">Fehler bei der Abgabe eines verlängerten Bolus</string>
     <string name="combo_bolus_rejected_due_to_pump_history_change">Nach der Berechnung des Bolus hat sich die Pumpenhistorie geändert. Daher wurde kein Bolus abgegeben. Bitte prüfe, ob überhaupt noch ein Bolus benötigt wird. Wenn die gleiche Bolusmenge erforderlich ist, warte zwei Minuten ab, denn es werden aus Sicherheitsgründen keine gleich großen Boli abgegeben, wenn sie innerhalb von zwei Minuten angefordert wurden (unabhängig davon, ob sie verabreicht wurden oder nicht).</string>
@@ -744,4 +734,7 @@
     <string name="combo_suspious_bolus_time">Zeit/Datum des abgegebenen Boluses auf der Pumpe erscheint falsch, IOB ist wahrscheinlich nicht korrekt. Bitte prüfe Zeit/Datum der Pumpe.</string>
     <string name="combo_tbr_count">Anzahl TBRs</string>
     <string name="combo_bolus_count">Anzahl Boluse</string>
+    <string name="pump_stopped">Pumpe gestoppt</string>
+    <string name="pump_started">Pumpe gestartet</string>
+    <string name="pump_paused">Pumpe pausiert</string>
 </resources>

@@ -2,8 +2,6 @@ package info.nightscout.androidaps.plugins.Careportal.Dialogs;
 
 
 import android.app.Activity;
-import android.content.DialogInterface;
-import android.content.Intent;
 import android.os.Bundle;
 import android.support.v4.app.DialogFragment;
 import android.support.v7.app.AlertDialog;
@@ -16,7 +14,6 @@ import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
@@ -24,6 +21,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import com.crashlytics.android.answers.CustomEvent;
+import com.google.common.collect.Lists;
 import com.wdullaer.materialdatetimepicker.date.DatePickerDialog;
 import com.wdullaer.materialdatetimepicker.time.RadialPickerLayout;
 import com.wdullaer.materialdatetimepicker.time.TimePickerDialog;
@@ -50,15 +48,13 @@ import info.nightscout.androidaps.db.CareportalEvent;
 import info.nightscout.androidaps.db.ProfileSwitch;
 import info.nightscout.androidaps.db.Source;
 import info.nightscout.androidaps.db.TempTarget;
-import info.nightscout.androidaps.events.EventNewBasalProfile;
-import info.nightscout.androidaps.interfaces.Constraint;
 import info.nightscout.androidaps.plugins.Careportal.OptionsToShow;
-import info.nightscout.androidaps.plugins.ConfigBuilder.ConfigBuilderPlugin;
-import info.nightscout.androidaps.plugins.Overview.Dialogs.ErrorHelperActivity;
-import info.nightscout.androidaps.queue.Callback;
+import info.nightscout.androidaps.plugins.Treatments.TreatmentsPlugin;
 import info.nightscout.utils.DateUtil;
+import info.nightscout.utils.DefaultValueHelper;
 import info.nightscout.utils.FabricPrivacy;
 import info.nightscout.utils.HardLimits;
+import info.nightscout.utils.JsonHelper;
 import info.nightscout.utils.NSUpload;
 import info.nightscout.utils.NumberPicker;
 import info.nightscout.utils.SP;
@@ -74,7 +70,7 @@ public class NewNSTreatmentDialog extends DialogFragment implements View.OnClick
     private static String event;
 
     Profile profile;
-    ProfileStore profileStore;
+    public ProfileStore profileStore;
     String units = Constants.MGDL;
 
     TextView eventTypeText;
@@ -113,14 +109,14 @@ public class NewNSTreatmentDialog extends DialogFragment implements View.OnClick
 
     public void setOptions(OptionsToShow options, int event) {
         this.options = options;
-        this.event = MainApp.sResources.getString(event);
+        this.event = MainApp.gs(event);
     }
 
     public NewNSTreatmentDialog() {
         super();
 
         if (seconds == null) {
-            seconds = new Double(Math.random() * 59).intValue();
+            seconds = Double.valueOf(Math.random() * 59).intValue();
         }
     }
 
@@ -140,7 +136,7 @@ public class NewNSTreatmentDialog extends DialogFragment implements View.OnClick
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         if (options == null) return null;
-        getDialog().setTitle(getString(options.eventName));
+        getDialog().setTitle(MainApp.gs(options.eventName));
         setStyle(DialogFragment.STYLE_NORMAL, getTheme());
         View view = inflater.inflate(R.layout.careportal_newnstreatment_dialog, container, false);
 
@@ -197,36 +193,40 @@ public class NewNSTreatmentDialog extends DialogFragment implements View.OnClick
         final Double bg = Profile.fromMgdlToUnits(GlucoseStatus.getGlucoseStatusData() != null ? GlucoseStatus.getGlucoseStatusData().glucose : 0d, units);
 
         // temp target
-        final ArrayList<CharSequence> reasonList = new ArrayList<CharSequence>();
-        reasonList.add(MainApp.sResources.getString(R.string.manual));
-        reasonList.add(MainApp.sResources.getString(R.string.eatingsoon));
-        reasonList.add(MainApp.sResources.getString(R.string.activity));
-        ArrayAdapter<CharSequence> adapterReason = new ArrayAdapter<CharSequence>(getContext(),
+        final List<String> reasonList = Lists.newArrayList(
+                MainApp.gs(R.string.manual),
+                MainApp.gs(R.string.eatingsoon),
+                MainApp.gs(R.string.activity),
+                MainApp.gs(R.string.hypo));
+        ArrayAdapter<String> adapterReason = new ArrayAdapter<>(getContext(),
                 R.layout.spinner_centered, reasonList);
         reasonSpinner.setAdapter(adapterReason);
         reasonSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                double defaultDuration = 0;
+                double defaultDuration;
                 double defaultTarget = 0;
                 if (profile != null) {
-                    defaultTarget = bg.doubleValue();
+                    defaultTarget = bg;
                 }
                 boolean erase = false;
 
-                if (MainApp.sResources.getString(R.string.eatingsoon).equals(reasonList.get(position))) {
-                    defaultDuration = SP.getDouble(R.string.key_eatingsoon_duration, 0d);
-                    defaultTarget = SP.getDouble(R.string.key_eatingsoon_target, 0d);
-                    ;
-                } else if (MainApp.sResources.getString(R.string.activity).equals(reasonList.get(position))) {
-                    defaultDuration = SP.getDouble(R.string.key_activity_duration, 0d);
-                    ;
-                    defaultTarget = SP.getDouble(R.string.key_activity_target, 0d);
-                    ;
+                String units = MainApp.getConfigBuilder().getProfileUnits();
+                DefaultValueHelper helper = new DefaultValueHelper();
+                if (MainApp.gs(R.string.eatingsoon).equals(reasonList.get(position))) {
+                    defaultDuration = helper.determineEatingSoonTTDuration();
+                    defaultTarget = helper.determineEatingSoonTT(units);
+                } else if (MainApp.gs(R.string.activity).equals(reasonList.get(position))) {
+                    defaultDuration = helper.determineActivityTTDuration();
+                    defaultTarget = helper.determineActivityTT(units);
+                } else if (MainApp.gs(R.string.hypo).equals(reasonList.get(position))) {
+                    defaultDuration = helper.determineHypoTTDuration();
+                    defaultTarget = helper.determineHypoTT(units);
                 } else {
                     defaultDuration = 0;
                     erase = true;
                 }
+
                 if (defaultTarget != 0 || erase) {
                     editTemptarget.setValue(defaultTarget);
                 }
@@ -271,12 +271,9 @@ public class NewNSTreatmentDialog extends DialogFragment implements View.OnClick
             editBg.setParams(bg, 0d, 500d, 1d, new DecimalFormat("0"), false, bgTextWatcher);
             editTemptarget.setParams(bg, 0d, 500d, 1d, new DecimalFormat("0"), false);
         }
-        sensorRadioButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                Double bg = Profile.fromMgdlToUnits(GlucoseStatus.getGlucoseStatusData() != null ? GlucoseStatus.getGlucoseStatusData().glucose : 0d, profile.getUnits());
-                editBg.setValue(bg);
-            }
+        sensorRadioButton.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            Double bg1 = Profile.fromMgdlToUnits(GlucoseStatus.getGlucoseStatusData() != null ? GlucoseStatus.getGlucoseStatusData().glucose : 0d, profile.getUnits());
+            editBg.setValue(bg1);
         });
 
         Integer maxCarbs = MainApp.getConstraintChecker().getMaxCarbsAllowed().value();
@@ -349,18 +346,18 @@ public class NewNSTreatmentDialog extends DialogFragment implements View.OnClick
         editTimeshift = (NumberPicker) view.findViewById(R.id.careportal_newnstreatment_timeshift);
         editTimeshift.setParams(0d, (double) Constants.CPP_MIN_TIMESHIFT, (double) Constants.CPP_MAX_TIMESHIFT, 1d, new DecimalFormat("0"), false);
 
-        ProfileSwitch ps = MainApp.getConfigBuilder().getProfileSwitchFromHistory(System.currentTimeMillis());
+        ProfileSwitch ps = TreatmentsPlugin.getPlugin().getProfileSwitchFromHistory(DateUtil.now());
         if (ps != null && ps.isCPP) {
             final int percentage = ps.percentage;
             final int timeshift = ps.timeshift;
             reuseButton.setText(reuseButton.getText() + " " + percentage + "% " + timeshift + "h");
-            reuseButton.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    editPercentage.setValue((double) percentage);
-                    editTimeshift.setValue((double) timeshift);
-                }
+            reuseButton.setOnClickListener(v -> {
+                editPercentage.setValue((double) percentage);
+                editTimeshift.setValue((double) timeshift);
             });
+        }
+        if (ps == null) {
+            options.duration = false;
         }
 
         showOrHide((ViewGroup) view.findViewById(R.id.careportal_newnstreatment_eventtime_layout), options.date);
@@ -412,7 +409,7 @@ public class NewNSTreatmentDialog extends DialogFragment implements View.OnClick
                 tpd.show(context.getFragmentManager(), "Timepickerdialog");
                 break;
             case R.id.ok:
-                createNSTreatment();
+                confirmNSTreatmentCreation();
                 dismiss();
                 break;
             case R.id.cancel:
@@ -576,163 +573,168 @@ public class NewNSTreatmentDialog extends DialogFragment implements View.OnClick
 
     String buildConfirmText(JSONObject data) {
         String ret = "";
-        try {
-            if (data.has("eventType")) {
-                ret += getString(R.string.careportal_newnstreatment_eventtype);
-                ret += ": ";
-                ret += Translator.translate(data.getString("eventType"));
-                ret += "\n";
-            }
-            if (data.has("glucose")) {
-                ret += getString(R.string.treatments_wizard_bg_label);
-                ret += ": ";
-                ret += data.get("glucose");
-                ret += " " + units + "\n";
-            }
-            if (data.has("glucoseType")) {
-                ret += getString(R.string.careportal_newnstreatment_glucosetype);
-                ret += ": ";
-                ret += Translator.translate(data.getString("glucoseType"));
-                ret += "\n";
-            }
-            if (data.has("carbs")) {
-                ret += getString(R.string.careportal_newnstreatment_carbs_label);
-                ret += ": ";
-                ret += data.get("carbs");
-                ret += " g\n";
-            }
-            if (data.has("insulin")) {
-                ret += getString(R.string.careportal_newnstreatment_insulin_label);
-                ret += ": ";
-                ret += data.get("insulin");
-                ret += " U\n";
-            }
-            if (data.has("duration")) {
-                ret += getString(R.string.careportal_newnstreatment_duration_label);
-                ret += ": ";
-                ret += data.get("duration");
-                ret += " min\n";
-            }
-            if (data.has("percent")) {
-                ret += getString(R.string.careportal_newnstreatment_percent_label);
-                ret += ": ";
-                ret += data.get("percent");
-                ret += " %\n";
-            }
-            if (data.has("absolute")) {
-                ret += getString(R.string.careportal_newnstreatment_absolute_label);
-                ret += ": ";
-                ret += data.get("absolute");
-                ret += " U/h\n";
-            }
-            if (data.has("preBolus")) {
-                ret += getString(R.string.careportal_newnstreatment_carbtime_label);
-                ret += ": ";
-                ret += data.get("preBolus");
-                ret += " min\n";
-            }
-            if (data.has("notes")) {
-                ret += getString(R.string.careportal_newnstreatment_notes_label);
-                ret += ": ";
-                ret += data.get("notes");
-                ret += "\n";
-            }
-            if (data.has("profile")) {
-                ret += getString(R.string.careportal_newnstreatment_profile_label);
-                ret += ": ";
-                ret += data.get("profile");
-                ret += "\n";
-            }
-            if (data.has("percentage")) {
-                ret += getString(R.string.careportal_newnstreatment_percentage_label);
-                ret += ": ";
-                ret += data.get("percentage");
-                ret += " %\n";
-            }
-            if (data.has("timeshift")) {
-                ret += getString(R.string.careportal_newnstreatment_timeshift_label);
-                ret += ": ";
-                ret += data.get("timeshift");
-                ret += " h\n";
-            }
-            if (data.has("targetBottom") && data.has("targetTop")) {
-                ret += getString(R.string.target_range);
-                ret += " ";
-                ret += data.get("targetBottom");
-                ret += " - ";
-                ret += data.get("targetTop");
-                ret += "\n";
-            }
-            if (data.has("created_at")) {
-                ret += getString(R.string.careportal_newnstreatment_eventtime_label);
-                ret += ": ";
-                ret += eventTime.toLocaleString();
-                ret += "\n";
-            }
-            if (data.has("enteredBy")) {
-                ret += getString(R.string.careportal_newnstreatment_enteredby_title);
-                ret += ": ";
-                ret += data.get("enteredBy");
-                ret += "\n";
-            }
-        } catch (JSONException e) {
-            log.error("Unhandled exception", e);
+        if (data.has("eventType")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_eventtype);
+            ret += ": ";
+            ret += Translator.translate(JsonHelper.safeGetString(data, "eventType", ""));
+            ret += "\n";
+        }
+        if (data.has("glucose")) {
+            ret += MainApp.gs(R.string.treatments_wizard_bg_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "glucose", "");
+            ret += " " + units + "\n";
+        }
+        if (data.has("glucoseType")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_glucosetype);
+            ret += ": ";
+            ret += Translator.translate(JsonHelper.safeGetString(data, "glucoseType", ""));
+            ret += "\n";
+        }
+        if (data.has("carbs")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_carbs_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "carbs", "");
+            ret += " g\n";
+        }
+        if (data.has("insulin")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_insulin_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "insulin", "");
+            ret += " U\n";
+        }
+        if (data.has("duration")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_duration_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "duration", "");
+            ret += " min\n";
+        }
+        if (data.has("percent")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_percent_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "percent", "");
+            ret += " %\n";
+        }
+        if (data.has("absolute")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_absolute_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "absolute", "");
+            ret += " U/h\n";
+        }
+        if (data.has("preBolus")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_carbtime_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "preBolus", "");
+            ret += " min\n";
+        }
+        if (data.has("notes")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_notes_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "notes", "");
+            ret += "\n";
+        }
+        if (data.has("profile")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_profile_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "profile", "");
+            ret += "\n";
+        }
+        if (data.has("percentage")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_percentage_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "percentage", "");
+            ret += " %\n";
+        }
+        if (data.has("timeshift")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_timeshift_label);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "timeshift", "");
+            ret += " h\n";
+        }
+        if (data.has("targetBottom") && data.has("targetTop")) {
+            ret += MainApp.gs(R.string.target_range);
+            ret += " ";
+            ret += JsonHelper.safeGetObject(data, "targetBottom", "");
+            ret += " - ";
+            ret += JsonHelper.safeGetObject(data, "targetTop", "");
+            ret += "\n";
+        }
+        if (data.has("created_at")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_eventtime_label);
+            ret += ": ";
+            ret += eventTime.toLocaleString();
+            ret += "\n";
+        }
+        if (data.has("enteredBy")) {
+            ret += MainApp.gs(R.string.careportal_newnstreatment_enteredby_title);
+            ret += ": ";
+            ret += JsonHelper.safeGetObject(data, "enteredBy", "");
+            ret += "\n";
         }
 
         return ret;
     }
 
-    void createNSTreatment() {
-        final JSONObject data = gatherData();
-        String confirmText = buildConfirmText(data);
-        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
-        builder.setTitle(getContext().getString(R.string.confirmation));
-        builder.setMessage(confirmText);
-        builder.setPositiveButton(getContext().getString(R.string.ok), new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int id) {
-                if (options.executeProfileSwitch) {
-                    if (data.has("profile")) {
-                        try {
-                            doProfileSwitch(profileStore, data.getString("profile"), data.getInt("duration"), data.getInt("percentage"), data.getInt("timeshift"));
-                        } catch (JSONException e) {
-                            log.error("Unhandled exception", e);
-                        }
-                    }
-                } else if (options.executeTempTarget) {
-                    try {
-                        if ((data.has("targetBottom") && data.has("targetTop")) || (data.has("duration") && data.getInt("duration") == 0)) {
-                            TempTarget tempTarget = new TempTarget()
-                                    .date(eventTime.getTime())
-                                    .duration(data.getInt("duration"))
-                                    .reason(data.getString("reason"))
-                                    .source(Source.USER);
-                            if (tempTarget.durationInMinutes != 0) {
-                                tempTarget.low(Profile.toMgdl(data.getDouble("targetBottom"), profile.getUnits()))
-                                        .high(Profile.toMgdl(data.getDouble("targetTop"), profile.getUnits()));
-                            } else {
-                                tempTarget.low(0).high(0);
-                            }
-                            log.debug("Creating new TempTarget db record: " + tempTarget.toString());
-                            MainApp.getDbHelper().createOrUpdate(tempTarget);
-                            NSUpload.uploadCareportalEntryToNS(data);
-                            FabricPrivacy.getInstance().logCustom(new CustomEvent("TempTarget"));
-                        }
-                    } catch (JSONException e) {
-                        log.error("Unhandled exception", e);
-                    }
-                } else {
-                    NSUpload.uploadCareportalEntryToNS(data);
-                    FabricPrivacy.getInstance().logCustom(new CustomEvent("NSTreatment"));
-                }
-            }
-        });
-        builder.setNegativeButton(getContext().getString(R.string.cancel), null);
-        builder.show();
+    void confirmNSTreatmentCreation() {
+        if (context != null) {
+            final JSONObject data = gatherData();
+            final String confirmText = buildConfirmText(data);
+            AlertDialog.Builder builder = new AlertDialog.Builder(context);
+            builder.setTitle(MainApp.gs(R.string.confirmation));
+            builder.setMessage(confirmText);
+            builder.setPositiveButton(MainApp.gs(R.string.ok), (dialog, id) -> createNSTreatment(data));
+            builder.setNegativeButton(MainApp.gs(R.string.cancel), null);
+            builder.show();
+        }
     }
 
-    public static void doProfileSwitch(final ProfileStore profileStore, final String profileName, final int duration, final int percentage, final int timeshift) {
+
+    public void createNSTreatment(JSONObject data) {
+        if (options.executeProfileSwitch) {
+            if (data.has("profile")) {
+                doProfileSwitch(profileStore, JsonHelper.safeGetString(data, "profile"), JsonHelper.safeGetInt(data, "duration"), JsonHelper.safeGetInt(data, "percentage"), JsonHelper.safeGetInt(data, "timeshift"));
+            }
+        } else if (options.executeTempTarget) {
+            final int duration = JsonHelper.safeGetInt(data, "duration");
+            final double targetBottom = JsonHelper.safeGetDouble(data, "targetBottom");
+            final double targetTop = JsonHelper.safeGetDouble(data, "targetTop");
+            final String reason = JsonHelper.safeGetString(data, "reason", "");
+            if ((targetBottom != 0d && targetTop != 0d) || duration == 0) {
+                TempTarget tempTarget = new TempTarget()
+                        .date(eventTime.getTime())
+                        .duration(duration)
+                        .reason(reason)
+                        .source(Source.USER);
+                if (tempTarget.durationInMinutes != 0) {
+                    tempTarget.low(Profile.toMgdl(targetBottom, profile.getUnits()))
+                            .high(Profile.toMgdl(targetTop, profile.getUnits()));
+                } else {
+                    tempTarget.low(0).high(0);
+                }
+                TreatmentsPlugin.getPlugin().addToHistoryTempTarget(tempTarget);
+                FabricPrivacy.getInstance().logCustom(new CustomEvent("TempTarget"));
+            }
+        } else {
+            if (JsonHelper.safeGetString(data, "eventType").equals(CareportalEvent.PROFILESWITCH)) {
+                ProfileSwitch profileSwitch = prepareProfileSwitch(
+                        profileStore,
+                        JsonHelper.safeGetString(data, "profile"),
+                        JsonHelper.safeGetInt(data, "duration"),
+                        JsonHelper.safeGetInt(data, "percentage"),
+                        JsonHelper.safeGetInt(data, "timeshift"),
+                        eventTime.getTime()
+                );
+                NSUpload.uploadProfileSwitch(profileSwitch);
+            } else {
+                NSUpload.uploadCareportalEntryToNS(data);
+            }
+            FabricPrivacy.getInstance().logCustom(new CustomEvent("NSTreatment"));
+        }
+    }
+
+    public static ProfileSwitch prepareProfileSwitch(final ProfileStore profileStore, final String profileName, final int duration, final int percentage, final int timeshift, long date) {
         ProfileSwitch profileSwitch = new ProfileSwitch();
-        profileSwitch.date = System.currentTimeMillis();
+        profileSwitch.date = date;
         profileSwitch.source = Source.USER;
         profileSwitch.profileName = profileName;
         profileSwitch.profileJson = profileStore.getSpecificProfile(profileName).getData().toString();
@@ -741,27 +743,17 @@ public class NewNSTreatmentDialog extends DialogFragment implements View.OnClick
         profileSwitch.isCPP = percentage != 100 || timeshift != 0;
         profileSwitch.timeshift = timeshift;
         profileSwitch.percentage = percentage;
-        MainApp.getConfigBuilder().addToHistoryProfileSwitch(profileSwitch);
+        return profileSwitch;
+    }
 
-        ConfigBuilderPlugin.getCommandQueue().setProfile(profileSwitch.getProfileObject(), new Callback() {
-            @Override
-            public void run() {
-                if (!result.success) {
-                    Intent i = new Intent(MainApp.instance(), ErrorHelperActivity.class);
-                    i.putExtra("soundid", R.raw.boluserror);
-                    i.putExtra("status", result.comment);
-                    i.putExtra("title", MainApp.sResources.getString(R.string.failedupdatebasalprofile));
-                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    MainApp.instance().startActivity(i);
-                }
-                MainApp.bus().post(new EventNewBasalProfile());
-            }
-        });
+    public static void doProfileSwitch(final ProfileStore profileStore, final String profileName, final int duration, final int percentage, final int timeshift) {
+        ProfileSwitch profileSwitch = prepareProfileSwitch(profileStore, profileName, duration, percentage, timeshift, System.currentTimeMillis());
+        TreatmentsPlugin.getPlugin().addToHistoryProfileSwitch(profileSwitch);
         FabricPrivacy.getInstance().logCustom(new CustomEvent("ProfileSwitch"));
     }
 
     public static void doProfileSwitch(final int duration, final int percentage, final int timeshift) {
-        ProfileSwitch profileSwitch = MainApp.getConfigBuilder().getProfileSwitchFromHistory(System.currentTimeMillis());
+        ProfileSwitch profileSwitch = TreatmentsPlugin.getPlugin().getProfileSwitchFromHistory(System.currentTimeMillis());
         if (profileSwitch != null) {
             profileSwitch = new ProfileSwitch();
             profileSwitch.date = System.currentTimeMillis();
@@ -773,22 +765,7 @@ public class NewNSTreatmentDialog extends DialogFragment implements View.OnClick
             profileSwitch.isCPP = percentage != 100 || timeshift != 0;
             profileSwitch.timeshift = timeshift;
             profileSwitch.percentage = percentage;
-            MainApp.getConfigBuilder().addToHistoryProfileSwitch(profileSwitch);
-
-            ConfigBuilderPlugin.getCommandQueue().setProfile(profileSwitch.getProfileObject(), new Callback() {
-                @Override
-                public void run() {
-                    if (!result.success) {
-                        Intent i = new Intent(MainApp.instance(), ErrorHelperActivity.class);
-                        i.putExtra("soundid", R.raw.boluserror);
-                        i.putExtra("status", result.comment);
-                        i.putExtra("title", MainApp.sResources.getString(R.string.failedupdatebasalprofile));
-                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        MainApp.instance().startActivity(i);
-                    }
-                    MainApp.bus().post(new EventNewBasalProfile());
-                }
-            });
+            TreatmentsPlugin.getPlugin().addToHistoryProfileSwitch(profileSwitch);
             FabricPrivacy.getInstance().logCustom(new CustomEvent("ProfileSwitch"));
         } else {
             log.error("No profile switch existing");

@@ -18,12 +18,15 @@ import info.nightscout.androidaps.data.Profile;
 import info.nightscout.androidaps.data.PumpEnactResult;
 import info.nightscout.androidaps.db.ExtendedBolus;
 import info.nightscout.androidaps.db.TemporaryBasal;
-import info.nightscout.androidaps.db.Treatment;
+import info.nightscout.androidaps.plugins.PumpDanaR.comm.MsgBolusStartWithSpeed;
+import info.nightscout.androidaps.plugins.Treatments.Treatment;
 import info.nightscout.androidaps.events.EventAppExit;
 import info.nightscout.androidaps.events.EventPreferenceChange;
 import info.nightscout.androidaps.interfaces.Constraint;
+import info.nightscout.androidaps.interfaces.PluginType;
 import info.nightscout.androidaps.interfaces.PumpDescription;
 import info.nightscout.androidaps.plugins.PumpDanaR.services.DanaRExecutionService;
+import info.nightscout.androidaps.plugins.Treatments.TreatmentsPlugin;
 import info.nightscout.utils.Round;
 import info.nightscout.utils.SP;
 
@@ -41,13 +44,9 @@ public class DanaRPlugin extends AbstractDanaRPlugin {
     }
 
     public DanaRPlugin() {
+        super();
         log = LoggerFactory.getLogger(DanaRPlugin.class);
         useExtendedBoluses = SP.getBoolean("danar_useextended", false);
-
-        Context context = MainApp.instance().getApplicationContext();
-        Intent intent = new Intent(context, DanaRExecutionService.class);
-        context.bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
-        MainApp.bus().register(this);
 
         pumpDescription.isBolusCapable = true;
         pumpDescription.bolusStep = 0.05d;
@@ -73,7 +72,27 @@ public class DanaRPlugin extends AbstractDanaRPlugin {
 
         pumpDescription.isRefillingCapable = true;
 
-        pumpDescription.storesCarbInfo = true;
+        pumpDescription.storesCarbInfo = false;
+
+        pumpDescription.supportsTDDs = true;
+        pumpDescription.needsManualTDDLoad = true;
+    }
+
+    @Override
+    protected void onStart() {
+        Context context = MainApp.instance().getApplicationContext();
+        Intent intent = new Intent(context, DanaRExecutionService.class);
+        context.bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+        MainApp.bus().register(this);
+        super.onStart();
+    }
+
+    @Override
+    protected void onStop() {
+        Context context = MainApp.instance().getApplicationContext();
+        context.unbindService(mConnection);
+
+        MainApp.bus().unregister(this);
     }
 
     private ServiceConnection mConnection = new ServiceConnection() {
@@ -98,11 +117,11 @@ public class DanaRPlugin extends AbstractDanaRPlugin {
 
     @Subscribe
     public void onStatusEvent(final EventPreferenceChange s) {
-        if (isEnabled(PUMP)) {
+        if (isEnabled(PluginType.PUMP)) {
             boolean previousValue = useExtendedBoluses;
             useExtendedBoluses = SP.getBoolean("danar_useextended", false);
 
-            if (useExtendedBoluses != previousValue && MainApp.getConfigBuilder().isInHistoryExtendedBoluslInProgress()) {
+            if (useExtendedBoluses != previousValue && TreatmentsPlugin.getPlugin().isInHistoryExtendedBoluslInProgress()) {
                 sExecutionService.extendedBolusStop();
             }
         }
@@ -111,7 +130,7 @@ public class DanaRPlugin extends AbstractDanaRPlugin {
     // Plugin base interface
     @Override
     public String getName() {
-        return MainApp.instance().getString(R.string.danarpump);
+        return MainApp.gs(R.string.danarpump);
     }
 
     @Override
@@ -137,24 +156,28 @@ public class DanaRPlugin extends AbstractDanaRPlugin {
             Treatment t = new Treatment();
             t.isSMB = detailedBolusInfo.isSMB;
             boolean connectionOK = false;
-            if (detailedBolusInfo.insulin > 0 || detailedBolusInfo.carbs > 0) connectionOK = sExecutionService.bolus(detailedBolusInfo.insulin, (int) detailedBolusInfo.carbs, detailedBolusInfo.carbTime, t);
+            if (detailedBolusInfo.insulin > 0 || detailedBolusInfo.carbs > 0)
+                connectionOK = sExecutionService.bolus(detailedBolusInfo.insulin, (int) detailedBolusInfo.carbs, detailedBolusInfo.carbTime, t);
             PumpEnactResult result = new PumpEnactResult();
-            result.success = connectionOK;
+            result.success = connectionOK && Math.abs(detailedBolusInfo.insulin - t.insulin) < pumpDescription.bolusStep;
             result.bolusDelivered = t.insulin;
             result.carbsDelivered = detailedBolusInfo.carbs;
-            result.comment = MainApp.instance().getString(R.string.virtualpump_resultok);
+            if (!result.success)
+                result.comment = String.format(MainApp.gs(R.string.boluserrorcode), detailedBolusInfo.insulin, t.insulin, MsgBolusStartWithSpeed.errorCode);
+            else
+                result.comment = MainApp.gs(R.string.virtualpump_resultok);
             if (Config.logPumpActions)
                 log.debug("deliverTreatment: OK. Asked: " + detailedBolusInfo.insulin + " Delivered: " + result.bolusDelivered);
             detailedBolusInfo.insulin = t.insulin;
             detailedBolusInfo.date = System.currentTimeMillis();
-            MainApp.getConfigBuilder().addToHistoryTreatment(detailedBolusInfo);
+            TreatmentsPlugin.getPlugin().addToHistoryTreatment(detailedBolusInfo);
             return result;
         } else {
             PumpEnactResult result = new PumpEnactResult();
             result.success = false;
             result.bolusDelivered = 0d;
             result.carbsDelivered = 0d;
-            result.comment = MainApp.instance().getString(R.string.danar_invalidinput);
+            result.comment = MainApp.gs(R.string.danar_invalidinput);
             log.error("deliverTreatment: Invalid input");
             return result;
         }
@@ -179,8 +202,8 @@ public class DanaRPlugin extends AbstractDanaRPlugin {
         final boolean doExtendedTemp = absoluteRate > getBaseBasalRate() && useExtendedBoluses;
 
         long now = System.currentTimeMillis();
-        TemporaryBasal activeTemp = MainApp.getConfigBuilder().getRealTempBasalFromHistory(now);
-        ExtendedBolus activeExtended = MainApp.getConfigBuilder().getExtendedBolusFromHistory(now);
+        TemporaryBasal activeTemp = TreatmentsPlugin.getPlugin().getRealTempBasalFromHistory(now);
+        ExtendedBolus activeExtended = TreatmentsPlugin.getPlugin().getExtendedBolusFromHistory(now);
 
         if (doTempOff) {
             // If extended in progress
@@ -315,22 +338,22 @@ public class DanaRPlugin extends AbstractDanaRPlugin {
 
     @Override
     public PumpEnactResult cancelTempBasal(boolean force) {
-        if (MainApp.getConfigBuilder().isInHistoryRealTempBasalInProgress())
+        if (TreatmentsPlugin.getPlugin().isInHistoryRealTempBasalInProgress())
             return cancelRealTempBasal();
-        if (MainApp.getConfigBuilder().isInHistoryExtendedBoluslInProgress() && useExtendedBoluses) {
+        if (TreatmentsPlugin.getPlugin().isInHistoryExtendedBoluslInProgress() && useExtendedBoluses) {
             return cancelExtendedBolus();
         }
         PumpEnactResult result = new PumpEnactResult();
         result.success = true;
         result.enacted = false;
-        result.comment = MainApp.instance().getString(R.string.virtualpump_resultok);
+        result.comment = MainApp.gs(R.string.virtualpump_resultok);
         result.isTempCancel = true;
         return result;
     }
 
     public PumpEnactResult cancelRealTempBasal() {
         PumpEnactResult result = new PumpEnactResult();
-        TemporaryBasal runningTB =  MainApp.getConfigBuilder().getTempBasalFromHistory(System.currentTimeMillis());
+        TemporaryBasal runningTB = TreatmentsPlugin.getPlugin().getTempBasalFromHistory(System.currentTimeMillis());
         if (runningTB != null) {
             sExecutionService.tempBasalStop();
             result.enacted = true;
@@ -339,13 +362,13 @@ public class DanaRPlugin extends AbstractDanaRPlugin {
         if (!pump.isTempBasalInProgress) {
             result.success = true;
             result.isTempCancel = true;
-            result.comment = MainApp.instance().getString(R.string.virtualpump_resultok);
+            result.comment = MainApp.gs(R.string.virtualpump_resultok);
             if (Config.logPumpActions)
                 log.debug("cancelRealTempBasal: OK");
             return result;
         } else {
             result.success = false;
-            result.comment = MainApp.instance().getString(R.string.danar_valuenotsetproperly);
+            result.comment = MainApp.gs(R.string.danar_valuenotsetproperly);
             result.isTempCancel = true;
             log.error("cancelRealTempBasal: Failed to cancel temp basal");
             return result;

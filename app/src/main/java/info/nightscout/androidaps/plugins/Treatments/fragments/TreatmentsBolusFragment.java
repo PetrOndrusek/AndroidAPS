@@ -31,7 +31,7 @@ import info.nightscout.androidaps.Services.Intents;
 import info.nightscout.androidaps.data.Iob;
 import info.nightscout.androidaps.data.Profile;
 import info.nightscout.androidaps.db.Source;
-import info.nightscout.androidaps.db.Treatment;
+import info.nightscout.androidaps.plugins.Treatments.Treatment;
 import info.nightscout.androidaps.events.EventNewBG;
 import info.nightscout.androidaps.events.EventTreatmentChange;
 import info.nightscout.androidaps.plugins.Common.SubscriberFragment;
@@ -81,7 +81,7 @@ public class TreatmentsBolusFragment extends SubscriberFragment implements View.
             Iob iob = t.iobCalc(System.currentTimeMillis(), profile.getDia());
             holder.iob.setText(DecimalFormatter.to2Decimal(iob.iobContrib) + " U");
             holder.activity.setText(DecimalFormatter.to3Decimal(iob.activityContrib) + " U");
-            holder.mealOrCorrection.setText(t.isSMB ? "SMB" : t.mealBolus ? MainApp.sResources.getString(R.string.mealbolus) : MainApp.sResources.getString(R.string.correctionbous));
+            holder.mealOrCorrection.setText(t.isSMB ? "SMB" : t.mealBolus ? MainApp.gs(R.string.mealbolus) : MainApp.gs(R.string.correctionbous));
             holder.ph.setVisibility(t.source == Source.PUMP ? View.VISIBLE : View.GONE);
             holder.ns.setVisibility(NSUpload.isIdValid(t._id) ? View.VISIBLE : View.GONE);
             holder.invalid.setVisibility(t.isValid ? View.GONE : View.VISIBLE);
@@ -89,6 +89,10 @@ public class TreatmentsBolusFragment extends SubscriberFragment implements View.
                 holder.iob.setTextColor(ContextCompat.getColor(MainApp.instance(), R.color.colorActive));
             else
                 holder.iob.setTextColor(holder.carbs.getCurrentTextColor());
+            if (t.date > DateUtil.now())
+                holder.date.setTextColor(ContextCompat.getColor(MainApp.instance(), R.color.colorScheduled));
+            else
+                holder.date.setTextColor(holder.carbs.getCurrentTextColor());
             holder.remove.setTag(t);
         }
 
@@ -138,27 +142,27 @@ public class TreatmentsBolusFragment extends SubscriberFragment implements View.
                 switch (v.getId()) {
                     case R.id.treatments_remove:
                         AlertDialog.Builder builder = new AlertDialog.Builder(context);
-                        builder.setTitle(MainApp.sResources.getString(R.string.confirmation));
-                        builder.setMessage(MainApp.sResources.getString(R.string.removerecord) + "\n" + DateUtil.dateAndTimeString(treatment.date));
-                        builder.setPositiveButton(MainApp.sResources.getString(R.string.ok), new DialogInterface.OnClickListener() {
+                        builder.setTitle(MainApp.gs(R.string.confirmation));
+                        builder.setMessage(MainApp.gs(R.string.removerecord) + "\n" + DateUtil.dateAndTimeString(treatment.date));
+                        builder.setPositiveButton(MainApp.gs(R.string.ok), new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int id) {
                                 final String _id = treatment._id;
                                 if (treatment.source == Source.PUMP) {
                                     treatment.isValid = false;
-                                    MainApp.getDbHelper().update(treatment);
+                                    TreatmentsPlugin.getPlugin().getService().update(treatment);
                                 } else {
                                     if (NSUpload.isIdValid(_id)) {
                                         NSUpload.removeCareportalEntryFromNS(_id);
                                     } else {
                                         UploadQueue.removeID("dbAdd", _id);
                                     }
-                                    MainApp.getDbHelper().delete(treatment);
+                                    TreatmentsPlugin.getPlugin().getService().delete(treatment);
                                 }
                                 updateGUI();
                                 FabricPrivacy.getInstance().logCustom(new CustomEvent("RemoveTreatment"));
                             }
                         });
-                        builder.setNegativeButton(MainApp.sResources.getString(R.string.cancel), null);
+                        builder.setNegativeButton(MainApp.gs(R.string.cancel), null);
                         builder.show();
                         break;
                 }
@@ -200,16 +204,16 @@ public class TreatmentsBolusFragment extends SubscriberFragment implements View.
         switch (view.getId()) {
             case R.id.treatments_reshreshfromnightscout:
                 AlertDialog.Builder builder = new AlertDialog.Builder(this.getContext());
-                builder.setTitle(this.getContext().getString(R.string.confirmation));
-                builder.setMessage(this.getContext().getString(R.string.refresheventsfromnightscout) + "?");
-                builder.setPositiveButton(this.getContext().getString(R.string.ok), new DialogInterface.OnClickListener() {
+                builder.setTitle(MainApp.gs(R.string.confirmation));
+                builder.setMessage(MainApp.gs(R.string.refresheventsfromnightscout) + "?");
+                builder.setPositiveButton(MainApp.gs(R.string.ok), new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int id) {
-                        MainApp.getDbHelper().resetTreatments();
+                        TreatmentsPlugin.getPlugin().getService().resetTreatments();
                         Intent restartNSClient = new Intent(Intents.ACTION_RESTART);
                         MainApp.instance().getApplicationContext().sendBroadcast(restartNSClient);
                     }
                 });
-                builder.setNegativeButton(this.getContext().getString(R.string.cancel), null);
+                builder.setNegativeButton(MainApp.gs(R.string.cancel), null);
                 builder.show();
                 break;
         }

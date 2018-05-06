@@ -15,13 +15,13 @@ import info.nightscout.androidaps.Constants;
 import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.R;
 import info.nightscout.androidaps.interfaces.Constraint;
-import info.nightscout.androidaps.interfaces.PluginBase;
+import info.nightscout.androidaps.interfaces.PluginType;
 import info.nightscout.androidaps.plugins.ConfigBuilder.ConfigBuilderPlugin;
 import info.nightscout.androidaps.plugins.OpenAPSAMA.OpenAPSAMAPlugin;
 import info.nightscout.androidaps.plugins.OpenAPSMA.OpenAPSMAPlugin;
 import info.nightscout.androidaps.plugins.OpenAPSSMB.OpenAPSSMBPlugin;
 import info.nightscout.androidaps.plugins.PumpVirtual.VirtualPumpPlugin;
-import info.nightscout.androidaps.plugins.SourceGlimp.SourceGlimpPlugin;
+import info.nightscout.androidaps.plugins.Source.SourceGlimpPlugin;
 import info.nightscout.utils.SP;
 
 import static org.mockito.Mockito.when;
@@ -208,9 +208,9 @@ public class SafetyPluginTest {
     public void iobShouldBeLimited() throws Exception {
         when(SP.getDouble(R.string.key_openapsma_max_iob, 1.5d)).thenReturn(1.5d);
         when(SP.getString(R.string.key_age, "")).thenReturn("teenage");
-        OpenAPSMAPlugin.getPlugin().setPluginEnabled(PluginBase.APS, true);
-        OpenAPSAMAPlugin.getPlugin().setPluginEnabled(PluginBase.APS, true);
-        OpenAPSSMBPlugin.getPlugin().setPluginEnabled(PluginBase.APS, true);
+        OpenAPSMAPlugin.getPlugin().setPluginEnabled(PluginType.APS, true);
+        OpenAPSAMAPlugin.getPlugin().setPluginEnabled(PluginType.APS, true);
+        //OpenAPSSMBPlugin.getPlugin().setPluginEnabled(PluginType.APS, true);
 
         // Apply all limits
         Constraint<Double> d = new Constraint<>(Constants.REALLYHIGHIOB);
@@ -218,8 +218,7 @@ public class SafetyPluginTest {
         Assert.assertEquals(1.5d, d.value());
         Assert.assertEquals("Safety: Limiting IOB to 1.5 U because of max value in preferences\n" +
                 "Safety: Limiting IOB to 7.0 U because of hard limit\n" +
-                "Safety: Limiting IOB to 7.0 U because of hard limit\n" +
-                "Safety: Limiting IOB to 12.0 U because of hard limit", d.getReasons());
+                "Safety: Limiting IOB to 7.0 U because of hard limit", d.getReasons());
         Assert.assertEquals("Safety: Limiting IOB to 1.5 U because of max value in preferences", d.getMostLimitedReasons());
     }
 
@@ -230,7 +229,7 @@ public class SafetyPluginTest {
         AAPSMocker.mockConstraintsChecker();
         AAPSMocker.mockSP();
         AAPSMocker.mockStrings();
-
+        AAPSMocker.mockBus();
 
 
         when(MainApp.getConfigBuilder().getActivePump()).thenReturn(pump);

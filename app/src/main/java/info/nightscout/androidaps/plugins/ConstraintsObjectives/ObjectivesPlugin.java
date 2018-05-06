@@ -18,17 +18,22 @@ import info.nightscout.androidaps.interfaces.APSInterface;
 import info.nightscout.androidaps.interfaces.Constraint;
 import info.nightscout.androidaps.interfaces.ConstraintsInterface;
 import info.nightscout.androidaps.interfaces.PluginBase;
+import info.nightscout.androidaps.interfaces.PluginDescription;
+import info.nightscout.androidaps.interfaces.PluginType;
+import info.nightscout.androidaps.interfaces.PumpInterface;
 import info.nightscout.androidaps.plugins.ConfigBuilder.ConfigBuilderPlugin;
 import info.nightscout.androidaps.plugins.ConstraintsSafety.SafetyPlugin;
 import info.nightscout.androidaps.plugins.Loop.LoopPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.PumpVirtual.VirtualPumpPlugin;
+import info.nightscout.androidaps.plugins.Treatments.TreatmentsPlugin;
+import info.nightscout.utils.DateUtil;
 import info.nightscout.utils.SP;
 
 /**
  * Created by mike on 05.08.2016.
  */
-public class ObjectivesPlugin implements PluginBase, ConstraintsInterface {
+public class ObjectivesPlugin extends PluginBase implements ConstraintsInterface {
     private static Logger log = LoggerFactory.getLogger(ObjectivesPlugin.class);
 
     private static ObjectivesPlugin objectivesPlugin;
@@ -42,77 +47,23 @@ public class ObjectivesPlugin implements PluginBase, ConstraintsInterface {
 
     public static List<Objective> objectives;
 
-    private boolean fragmentVisible = true;
-
     private ObjectivesPlugin() {
+        super(new PluginDescription()
+                .mainType(PluginType.CONSTRAINTS)
+                .fragmentClass(ObjectivesFragment.class.getName())
+                .alwaysEnabled(!Config.NSCLIENT && !Config.G5UPLOADER)
+                .showInList(!Config.NSCLIENT && !Config.G5UPLOADER)
+                .pluginName(R.string.objectives)
+                .shortName(R.string.objectives_shortname)
+        );
         initializeData();
         loadProgress();
-        MainApp.bus().register(this);
     }
 
     @Override
-    public String getFragmentClass() {
-        return ObjectivesFragment.class.getName();
-    }
-
-    @Override
-    public int getType() {
-        return PluginBase.CONSTRAINTS;
-    }
-
-    @Override
-    public String getName() {
-        return MainApp.instance().getString(R.string.objectives);
-    }
-
-    @Override
-    public String getNameShort() {
-        String name = MainApp.gs(R.string.objectives_shortname);
-        if (!name.trim().isEmpty()) {
-            //only if translation exists
-            return name;
-        }
-        // use long name as fallback
-        return getName();
-    }
-
-    @Override
-    public boolean isEnabled(int type) {
-        return type == CONSTRAINTS && ConfigBuilderPlugin.getActivePump().getPumpDescription().isTempBasalCapable;
-    }
-
-    @Override
-    public boolean isVisibleInTabs(int type) {
-        return type == CONSTRAINTS && fragmentVisible && !Config.NSCLIENT && !Config.G5UPLOADER;
-    }
-
-    @Override
-    public boolean canBeHidden(int type) {
-        return true;
-    }
-
-    @Override
-    public boolean hasFragment() {
-        return true;
-    }
-
-    @Override
-    public boolean showInList(int type) {
-        return true;
-    }
-
-    @Override
-    public void setPluginEnabled(int type, boolean fragmentEnabled) {
-    }
-
-    @Override
-    public void setFragmentVisible(int type, boolean fragmentVisible) {
-        if (type == CONSTRAINTS) this.fragmentVisible = fragmentVisible;
-    }
-
-    @Override
-    public int getPreferencesId() {
-        return -1;
+    public boolean specialEnableCondition() {
+        PumpInterface pump = ConfigBuilderPlugin.getActivePump();
+        return pump == null || pump.getPumpDescription().isTempBasalCapable;
     }
 
     public class Objective {
@@ -170,24 +121,27 @@ public class ObjectivesPlugin implements PluginBase, ConstraintsInterface {
     RequirementResult requirementsMet(Integer objNum) {
         switch (objNum) {
             case 0:
-                boolean isVirtualPump = VirtualPumpPlugin.getPlugin().isEnabled(PluginBase.PUMP);
+                boolean isVirtualPump = VirtualPumpPlugin.getPlugin().isEnabled(PluginType.PUMP);
                 boolean vpUploadEnabled = SP.getBoolean("virtualpump_uploadstatus", false);
                 boolean vpUploadNeeded = !isVirtualPump || vpUploadEnabled;
                 boolean hasBGData = DatabaseHelper.lastBg() != null;
 
                 boolean apsEnabled = false;
                 APSInterface usedAPS = ConfigBuilderPlugin.getActiveAPS();
-                if (usedAPS != null && ((PluginBase) usedAPS).isEnabled(PluginBase.APS))
+                if (usedAPS != null && ((PluginBase) usedAPS).isEnabled(PluginType.APS))
                     apsEnabled = true;
 
-                return new RequirementResult(hasBGData && bgIsAvailableInNS && pumpStatusIsAvailableInNS && NSClientPlugin.getPlugin().hasWritePermission() && LoopPlugin.getPlugin().isEnabled(PluginBase.LOOP) && apsEnabled && vpUploadNeeded,
+                boolean profileSwitchExists = TreatmentsPlugin.getPlugin().getProfileSwitchFromHistory(DateUtil.now()) != null;
+
+                return new RequirementResult(hasBGData && bgIsAvailableInNS && pumpStatusIsAvailableInNS && NSClientPlugin.getPlugin().hasWritePermission() && LoopPlugin.getPlugin().isEnabled(PluginType.LOOP) && apsEnabled && vpUploadNeeded && profileSwitchExists,
                         MainApp.gs(R.string.objectives_bgavailableinns) + ": " + yesOrNo(bgIsAvailableInNS)
                                 + "\n" + MainApp.gs(R.string.nsclienthaswritepermission) + ": " + yesOrNo(NSClientPlugin.getPlugin().hasWritePermission())
                                 + (isVirtualPump ? "\n" + MainApp.gs(R.string.virtualpump_uploadstatus_title) + ": " + yesOrNo(vpUploadEnabled) : "")
                                 + "\n" + MainApp.gs(R.string.objectives_pumpstatusavailableinns) + ": " + yesOrNo(pumpStatusIsAvailableInNS)
                                 + "\n" + MainApp.gs(R.string.hasbgdata) + ": " + yesOrNo(hasBGData)
-                                + "\n" + MainApp.gs(R.string.loopenabled) + ": " + yesOrNo(LoopPlugin.getPlugin().isEnabled(PluginBase.LOOP))
+                                + "\n" + MainApp.gs(R.string.loopenabled) + ": " + yesOrNo(LoopPlugin.getPlugin().isEnabled(PluginType.LOOP))
                                 + "\n" + MainApp.gs(R.string.apsselected) + ": " + yesOrNo(apsEnabled)
+                                + "\n" + MainApp.gs(R.string.activate_profile) + ": " + yesOrNo(profileSwitchExists)
                 );
             case 1:
                 return new RequirementResult(manualEnacts >= manualEnactsNeeded,
@@ -328,14 +282,14 @@ public class ObjectivesPlugin implements PluginBase, ConstraintsInterface {
     }
 
     @Override
-    public Constraint<Boolean>  isAMAModeEnabled(Constraint<Boolean> value) {
+    public Constraint<Boolean> isAMAModeEnabled(Constraint<Boolean> value) {
         if (!objectives.get(6).isStarted())
             value.set(false, String.format(MainApp.gs(R.string.objectivenotstarted), 7), this);
         return value;
     }
 
     @Override
-    public Constraint<Boolean>  isSMBModeEnabled(Constraint<Boolean> value) {
+    public Constraint<Boolean> isSMBModeEnabled(Constraint<Boolean> value) {
         if (!objectives.get(7).isStarted())
             value.set(false, String.format(MainApp.gs(R.string.objectivenotstarted), 8), this);
         return value;

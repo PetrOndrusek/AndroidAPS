@@ -3,6 +3,7 @@ package info.nightscout.androidaps.plugins.Loop;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.text.Html;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -64,7 +65,7 @@ public class LoopFragment extends SubscriberFragment {
 
     @OnClick(R.id.loop_run)
     void onRunClick() {
-        lastRunView.setText(MainApp.sResources.getString(R.string.executing));
+        lastRunView.setText(MainApp.gs(R.string.executing));
         new Thread(() -> LoopPlugin.getPlugin().invoke("Loop button", true)).start();
         FabricPrivacy.getInstance().logCustom(new CustomEvent("Loop_Run"));
     }
@@ -95,8 +96,8 @@ public class LoopFragment extends SubscriberFragment {
                     sourceView.setText(lastRun.source != null ? lastRun.source : "");
                     lastRunView.setText(lastRun.lastAPSRun != null && lastRun.lastAPSRun.getTime() != 0 ? lastRun.lastAPSRun.toLocaleString() : "");
                     lastEnactView.setText(lastRun.lastEnact != null && lastRun.lastEnact.getTime() != 0 ? lastRun.lastEnact.toLocaleString() : "");
-                    tbrSetByPumpView.setText(lastRun.tbrSetByPump != null ? lastRun.tbrSetByPump.toSpanned() : "");
-                    smbSetByPumpView.setText(lastRun.smbSetByPump != null ? lastRun.smbSetByPump.toSpanned() : "");
+                    tbrSetByPumpView.setText(lastRun.tbrSetByPump != null ? Html.fromHtml(lastRun.tbrSetByPump.toHtml()) : "");
+                    smbSetByPumpView.setText(lastRun.smbSetByPump != null ? Html.fromHtml(lastRun.smbSetByPump.toHtml()) : "");
 
                     String constraints = "";
                     if (lastRun.constraintsProcessed != null) {

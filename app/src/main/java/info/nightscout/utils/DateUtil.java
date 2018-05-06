@@ -4,6 +4,7 @@ import android.support.v4.util.LongSparseArray;
 import android.text.format.DateUtils;
 
 import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 
@@ -73,6 +74,7 @@ public class DateUtil {
 
     public static Date toDate(Integer seconds) {
         Calendar calendar = new GregorianCalendar();
+        calendar.set(Calendar.MONTH, 0); // Set january to be sure we miss DST changing
         calendar.set(Calendar.HOUR_OF_DAY, seconds / 60 / 60);
         calendar.set(Calendar.MINUTE, (seconds / 60) % 60);
         calendar.set(Calendar.SECOND, 0);
@@ -107,15 +109,21 @@ public class DateUtil {
     }
 
     public static String timeString(Date date) {
-        return DateUtils.formatDateTime(MainApp.instance(), date.getTime(), DateUtils.FORMAT_SHOW_TIME);
+        //return DateUtils.formatDateTime(MainApp.instance(), date.getTime(), DateUtils.FORMAT_SHOW_TIME);
+        return new DateTime(date).toString(DateTimeFormat.shortTime());
     }
 
     public static String timeString(long mills) {
-        return DateUtils.formatDateTime(MainApp.instance(), mills, DateUtils.FORMAT_SHOW_TIME);
+        //return DateUtils.formatDateTime(MainApp.instance(), mills, DateUtils.FORMAT_SHOW_TIME);
+        return new DateTime(mills).toString(DateTimeFormat.shortTime());
     }
 
     public static String dateAndTimeString(Date date) {
         return dateString(date) + " " + timeString(date);
+    }
+
+    public static String dateAndTimeRangeString(long start, long end) {
+        return dateAndTimeString(start) + " - " + timeString(end);
     }
 
     public static String dateAndTimeString(long mills) {
@@ -123,12 +131,12 @@ public class DateUtil {
     }
 
     public static String minAgo(long time) {
-        int mins = (int) ((System.currentTimeMillis() - time) / 1000 / 60);
+        int mins = (int) ((now() - time) / 1000 / 60);
         return MainApp.gs(R.string.minago, mins);
     }
 
     public static String hourAgo(long time) {
-        double hours = (System.currentTimeMillis() - time) / 1000d / 60 / 60;
+        double hours = (now() - time) / 1000d / 60 / 60;
         return MainApp.gs(R.string.hoursago, hours);
     }
 
@@ -138,7 +146,7 @@ public class DateUtil {
         String cached = timeStrings.get(seconds);
         if (cached != null)
             return cached;
-        String t = DateUtils.formatDateTime(MainApp.instance(), toDate(seconds).getTime(), DateUtils.FORMAT_SHOW_TIME);
+        String t = timeString(toDate(seconds));
         timeStrings.put(seconds, t);
         return t;
     }
@@ -161,6 +169,10 @@ public class DateUtil {
 
     public static long now() {
         return System.currentTimeMillis();
+    }
+
+    public static long roundDateToSec(long date) {
+        return date - date % 1000;
     }
 
 }

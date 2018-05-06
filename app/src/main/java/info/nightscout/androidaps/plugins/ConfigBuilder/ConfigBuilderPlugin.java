@@ -1,16 +1,15 @@
 package info.nightscout.androidaps.plugins.ConfigBuilder;
 
-import android.content.SharedPreferences;
-import android.preference.PreferenceManager;
+import android.content.Intent;
 import android.support.annotation.Nullable;
 
 import com.crashlytics.android.answers.CustomEvent;
+import com.squareup.otto.Subscribe;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.List;
 
 import info.nightscout.androidaps.BuildConfig;
 import info.nightscout.androidaps.Config;
@@ -18,45 +17,44 @@ import info.nightscout.androidaps.Constants;
 import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.R;
 import info.nightscout.androidaps.data.DetailedBolusInfo;
-import info.nightscout.androidaps.data.Intervals;
-import info.nightscout.androidaps.data.IobTotal;
-import info.nightscout.androidaps.data.MealData;
 import info.nightscout.androidaps.data.Profile;
-import info.nightscout.androidaps.data.ProfileIntervals;
 import info.nightscout.androidaps.data.ProfileStore;
 import info.nightscout.androidaps.data.PumpEnactResult;
 import info.nightscout.androidaps.db.CareportalEvent;
-import info.nightscout.androidaps.db.ExtendedBolus;
 import info.nightscout.androidaps.db.ProfileSwitch;
 import info.nightscout.androidaps.db.Source;
-import info.nightscout.androidaps.db.TempTarget;
 import info.nightscout.androidaps.db.TemporaryBasal;
-import info.nightscout.androidaps.db.Treatment;
 import info.nightscout.androidaps.events.EventAppInitialized;
+import info.nightscout.androidaps.events.EventNewBasalProfile;
+import info.nightscout.androidaps.events.EventProfileSwitchChange;
 import info.nightscout.androidaps.interfaces.APSInterface;
 import info.nightscout.androidaps.interfaces.BgSourceInterface;
 import info.nightscout.androidaps.interfaces.Constraint;
 import info.nightscout.androidaps.interfaces.InsulinInterface;
 import info.nightscout.androidaps.interfaces.PluginBase;
+import info.nightscout.androidaps.interfaces.PluginDescription;
+import info.nightscout.androidaps.interfaces.PluginType;
 import info.nightscout.androidaps.interfaces.ProfileInterface;
 import info.nightscout.androidaps.interfaces.PumpInterface;
 import info.nightscout.androidaps.interfaces.SensitivityInterface;
 import info.nightscout.androidaps.interfaces.TreatmentsInterface;
+import info.nightscout.androidaps.plugins.Insulin.InsulinOrefRapidActingPlugin;
 import info.nightscout.androidaps.plugins.Loop.APSResult;
 import info.nightscout.androidaps.plugins.Loop.LoopPlugin;
-import info.nightscout.androidaps.plugins.Overview.events.EventDismissNotification;
-import info.nightscout.androidaps.plugins.Overview.notifications.Notification;
+import info.nightscout.androidaps.plugins.Overview.Dialogs.ErrorHelperActivity;
 import info.nightscout.androidaps.plugins.PumpVirtual.VirtualPumpPlugin;
+import info.nightscout.androidaps.plugins.SensitivityOref0.SensitivityOref0Plugin;
 import info.nightscout.androidaps.queue.Callback;
 import info.nightscout.androidaps.queue.CommandQueue;
 import info.nightscout.utils.FabricPrivacy;
 import info.nightscout.utils.NSUpload;
+import info.nightscout.utils.SP;
 import info.nightscout.utils.ToastUtils;
 
 /**
  * Created by mike on 05.08.2016.
  */
-public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
+public class ConfigBuilderPlugin extends PluginBase {
     private static Logger log = LoggerFactory.getLogger(ConfigBuilderPlugin.class);
 
     private static ConfigBuilderPlugin configBuilderPlugin;
@@ -86,120 +84,164 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
     private static CommandQueue commandQueue = new CommandQueue();
 
     public ConfigBuilderPlugin() {
+        super(new PluginDescription()
+                .mainType(PluginType.GENERAL)
+                .fragmentClass(ConfigBuilderFragment.class.getName())
+                .showInList(false)
+                .alwaysEnabled(true)
+                .alwayVisible(true)
+                .pluginName(R.string.configbuilder)
+                .shortName(R.string.configbuilder_shortname)
+        );
+    }
+
+    @Override
+    protected void onStart() {
         MainApp.bus().register(this);
+        super.onStart();
     }
 
     @Override
-    public int getType() {
-        return PluginBase.GENERAL;
+    protected void onStop() {
+        super.onStop();
+        MainApp.bus().unregister(this);
     }
 
-    @Override
-    public String getFragmentClass() {
-        return ConfigBuilderFragment.class.getName();
-    }
-
-    @Override
-    public String getName() {
-        return MainApp.instance().getString(R.string.configbuilder);
-    }
-
-    @Override
-    public String getNameShort() {
-        String name = MainApp.sResources.getString(R.string.configbuilder_shortname);
-        if (!name.trim().isEmpty()) {
-            //only if translation exists
-            return name;
-        }
-        // use long name as fallback
-        return getName();
-    }
-
-    @Override
-    public boolean isEnabled(int type) {
-        return type == GENERAL;
-    }
-
-    @Override
-    public boolean isVisibleInTabs(int type) {
-        return type == GENERAL;
-    }
-
-    @Override
-    public boolean canBeHidden(int type) {
-        return false;
-    }
-
-    @Override
-    public boolean hasFragment() {
-        return true;
-    }
-
-    @Override
-    public boolean showInList(int type) {
-        return false;
-    }
-
-    @Override
-    public void setPluginEnabled(int type, boolean fragmentEnabled) {
-        // Always enabled
-    }
-
-    @Override
-    public void setFragmentVisible(int type, boolean fragmentVisible) {
-        // Always visible
-    }
-
-    @Override
-    public int getPreferencesId() {
-        return -1;
-    }
 
     public void initialize() {
         pluginList = MainApp.getPluginsList();
+        upgradeSettings();
         loadSettings();
         MainApp.bus().post(new EventAppInitialized());
     }
 
-    public void storeSettings() {
+    public void storeSettings(String from) {
         if (pluginList != null) {
             if (Config.logPrefsChange)
-                log.debug("Storing settings");
-            SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(MainApp.instance().getApplicationContext());
-            SharedPreferences.Editor editor = settings.edit();
+                log.debug("Storing settings from: " + from);
 
-            for (int type = 1; type < PluginBase.LAST; type++) {
-                for (PluginBase p : pluginList) {
-                    String settingEnabled = "ConfigBuilder_" + type + "_" + p.getClass().getSimpleName() + "_Enabled";
-                    String settingVisible = "ConfigBuilder_" + type + "_" + p.getClass().getSimpleName() + "_Visible";
-                    editor.putBoolean(settingEnabled, p.isEnabled(type));
-                    editor.putBoolean(settingVisible, p.isVisibleInTabs(type));
+            for (PluginBase p : pluginList) {
+                PluginType type = p.getType();
+                if (p.pluginDescription.alwaysEnabled && p.pluginDescription.alwayVisible)
+                    continue;
+                if (p.pluginDescription.alwaysEnabled && p.pluginDescription.neverVisible)
+                    continue;
+                savePref(p, type, true);
+                if (type == PluginType.PUMP) {
+                    if (p instanceof ProfileInterface) { // Store state of optional Profile interface
+                        savePref(p, PluginType.PROFILE, false);
+                    }
                 }
             }
-            editor.apply();
             verifySelectionInCategories();
+        }
+    }
+
+    private void savePref(PluginBase p, PluginType type, boolean storeVisible) {
+        String settingEnabled = "ConfigBuilder_" + type.name() + "_" + p.getClass().getSimpleName() + "_Enabled";
+        SP.putBoolean(settingEnabled, p.isEnabled(type));
+        log.debug("Storing: " + settingEnabled + ":" + p.isEnabled(type));
+        if (storeVisible) {
+            String settingVisible = "ConfigBuilder_" + type.name() + "_" + p.getClass().getSimpleName() + "_Visible";
+            SP.putBoolean(settingVisible, p.isFragmentVisible());
+            log.debug("Storing: " + settingVisible + ":" + p.isFragmentVisible());
         }
     }
 
     private void loadSettings() {
         if (Config.logPrefsChange)
             log.debug("Loading stored settings");
-        SharedPreferences SP = PreferenceManager.getDefaultSharedPreferences(MainApp.instance().getApplicationContext());
-        for (int type = 1; type < PluginBase.LAST; type++) {
-            for (PluginBase p : pluginList) {
-                try {
-                    String settingEnabled = "ConfigBuilder_" + type + "_" + p.getClass().getSimpleName() + "_Enabled";
-                    String settingVisible = "ConfigBuilder_" + type + "_" + p.getClass().getSimpleName() + "_Visible";
-                    if (SP.contains(settingEnabled))
-                        p.setPluginEnabled(type, SP.getBoolean(settingEnabled, true));
-                    if (SP.contains(settingVisible))
-                        p.setFragmentVisible(type, SP.getBoolean(settingVisible, true) && SP.getBoolean(settingEnabled, true));
-                } catch (Exception e) {
-                    log.error("Unhandled exception", e);
+        for (PluginBase p : pluginList) {
+            PluginType type = p.getType();
+            loadPref(p, type, true);
+            if (p.getType() == PluginType.PUMP) {
+                if (p instanceof ProfileInterface) {
+                    loadPref(p, PluginType.PROFILE, false);
                 }
             }
         }
         verifySelectionInCategories();
+    }
+
+    private void loadPref(PluginBase p, PluginType type, boolean loadVisible) {
+        String settingEnabled = "ConfigBuilder_" + type.name() + "_" + p.getClass().getSimpleName() + "_Enabled";
+        if (SP.contains(settingEnabled))
+            p.setPluginEnabled(type, SP.getBoolean(settingEnabled, false));
+        else if (p.getType() == type && (p.pluginDescription.enableByDefault || p.pluginDescription.alwaysEnabled)) {
+            p.setPluginEnabled(type, true);
+        }
+        log.debug("Loaded: " + settingEnabled + ":" + p.isEnabled(type));
+        if (loadVisible) {
+            String settingVisible = "ConfigBuilder_" + type.name() + "_" + p.getClass().getSimpleName() + "_Visible";
+            if (SP.contains(settingVisible))
+                p.setFragmentVisible(type, SP.getBoolean(settingVisible, false) && SP.getBoolean(settingEnabled, false));
+            else if (p.getType() == type && p.pluginDescription.visibleByDefault) {
+                p.setFragmentVisible(type, true);
+            }
+            log.debug("Loaded: " + settingVisible + ":" + p.isFragmentVisible());
+        }
+    }
+
+    // Detect settings prior 1.60
+    private void upgradeSettings() {
+        if (!SP.contains("ConfigBuilder_1_NSProfilePlugin_Enabled"))
+            return;
+        if (Config.logPrefsChange)
+            log.debug("Upgrading stored settings");
+        for (PluginBase p : pluginList) {
+            log.debug("Processing " + p.getName());
+            for (int type = 1; type < 11; type++) {
+                PluginType newType;
+                switch (type) {
+                    case 1:
+                        newType = PluginType.GENERAL;
+                        break;
+                    case 2:
+                        newType = PluginType.TREATMENT;
+                        break;
+                    case 3:
+                        newType = PluginType.SENSITIVITY;
+                        break;
+                    case 4:
+                        newType = PluginType.PROFILE;
+                        break;
+                    case 5:
+                        newType = PluginType.APS;
+                        break;
+                    case 6:
+                        newType = PluginType.PUMP;
+                        break;
+                    case 7:
+                        newType = PluginType.CONSTRAINTS;
+                        break;
+                    case 8:
+                        newType = PluginType.LOOP;
+                        break;
+                    case 9:
+                        newType = PluginType.BGSOURCE;
+                        break;
+                    case 10:
+                        newType = PluginType.INSULIN;
+                        break;
+                    default:
+                        newType = PluginType.GENERAL;
+                        break;
+                }
+                String settingEnabled = "ConfigBuilder_" + type + "_" + p.getClass().getSimpleName() + "_Enabled";
+                String settingVisible = "ConfigBuilder_" + type + "_" + p.getClass().getSimpleName() + "_Visible";
+                if (SP.contains(settingEnabled))
+                    p.setPluginEnabled(newType, SP.getBoolean(settingEnabled, false));
+                if (SP.contains(settingVisible))
+                    p.setFragmentVisible(newType, SP.getBoolean(settingVisible, false) && SP.getBoolean(settingEnabled, false));
+                SP.remove(settingEnabled);
+                SP.remove(settingVisible);
+                if (newType == p.getType()) {
+                    savePref(p, newType, true);
+                } else if (p.getType() == PluginType.PUMP && p instanceof ProfileInterface) {
+                    savePref(p, PluginType.PROFILE, false);
+                }
+            }
+        }
     }
 
     public static CommandQueue getCommandQueue() {
@@ -222,10 +264,6 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
         return activeAPS;
     }
 
-    public static LoopPlugin getActiveLoop() {
-        return activeLoop;
-    }
-
     public static PumpInterface getActivePump() {
         return activePump;
     }
@@ -237,16 +275,16 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
     void logPluginStatus() {
         for (PluginBase p : pluginList) {
             log.debug(p.getName() + ":" +
-                    (p.isEnabled(1) ? " GENERAL" : "") +
-                    (p.isEnabled(2) ? " TREATMENT" : "") +
-                    (p.isEnabled(3) ? " SENSITIVITY" : "") +
-                    (p.isEnabled(4) ? " PROFILE" : "") +
-                    (p.isEnabled(5) ? " APS" : "") +
-                    (p.isEnabled(6) ? " PUMP" : "") +
-                    (p.isEnabled(7) ? " CONSTRAINTS" : "") +
-                    (p.isEnabled(8) ? " LOOP" : "") +
-                    (p.isEnabled(9) ? " BGSOURCE" : "") +
-                    (p.isEnabled(10) ? " INSULIN" : "")
+                    (p.isEnabled(PluginType.GENERAL) ? " GENERAL" : "") +
+                    (p.isEnabled(PluginType.TREATMENT) ? " TREATMENT" : "") +
+                    (p.isEnabled(PluginType.SENSITIVITY) ? " SENSITIVITY" : "") +
+                    (p.isEnabled(PluginType.PROFILE) ? " PROFILE" : "") +
+                    (p.isEnabled(PluginType.APS) ? " APS" : "") +
+                    (p.isEnabled(PluginType.PUMP) ? " PUMP" : "") +
+                    (p.isEnabled(PluginType.CONSTRAINTS) ? " CONSTRAINTS" : "") +
+                    (p.isEnabled(PluginType.LOOP) ? " LOOP" : "") +
+                    (p.isEnabled(PluginType.BGSOURCE) ? " BGSOURCE" : "") +
+                    (p.isEnabled(PluginType.INSULIN) ? " INSULIN" : "")
             );
         }
     }
@@ -254,33 +292,47 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
     private void verifySelectionInCategories() {
         ArrayList<PluginBase> pluginsInCategory;
 
-        // PluginBase.APS
-        activeAPS = this.determineActivePlugin(APSInterface.class, PluginBase.APS);
+        // PluginType.APS
+        activeAPS = this.determineActivePlugin(APSInterface.class, PluginType.APS);
 
-        // PluginBase.INSULIN
-        activeInsulin = this.determineActivePlugin(InsulinInterface.class, PluginBase.INSULIN);
+        // PluginType.INSULIN
+        pluginsInCategory = MainApp.getSpecificPluginsList(PluginType.INSULIN);
+        activeInsulin = (InsulinInterface) getTheOneEnabledInArray(pluginsInCategory, PluginType.INSULIN);
+        if (activeInsulin == null) {
+            activeInsulin = InsulinOrefRapidActingPlugin.getPlugin();
+            InsulinOrefRapidActingPlugin.getPlugin().setPluginEnabled(PluginType.INSULIN, true);
+        }
+        this.setFragmentVisiblities(((PluginBase) activeInsulin).getName(), pluginsInCategory, PluginType.INSULIN);
 
-        // PluginBase.SENSITIVITY
-        activeSensitivity = this.determineActivePlugin(SensitivityInterface.class, PluginBase.SENSITIVITY);
+        // PluginType.SENSITIVITY
+        pluginsInCategory = MainApp.getSpecificPluginsList(PluginType.SENSITIVITY);
+        activeSensitivity = (SensitivityInterface) getTheOneEnabledInArray(pluginsInCategory, PluginType.SENSITIVITY);
+        if (activeSensitivity == null) {
+            activeSensitivity = SensitivityOref0Plugin.getPlugin();
+            SensitivityOref0Plugin.getPlugin().setPluginEnabled(PluginType.SENSITIVITY, true);
+        }
+        this.setFragmentVisiblities(((PluginBase) activeSensitivity).getName(), pluginsInCategory, PluginType.SENSITIVITY);
 
-        // PluginBase.PROFILE
-        activeProfile = this.determineActivePlugin(ProfileInterface.class, PluginBase.PROFILE);
+        // PluginType.PROFILE
+        activeProfile = this.determineActivePlugin(ProfileInterface.class, PluginType.PROFILE);
 
-        // PluginBase.BGSOURCE
-        activeBgSource = this.determineActivePlugin(BgSourceInterface.class, PluginBase.BGSOURCE);
+        // PluginType.BGSOURCE
+        activeBgSource = this.determineActivePlugin(BgSourceInterface.class, PluginType.BGSOURCE);
 
-        // PluginBase.PUMP
-        pluginsInCategory = MainApp.getSpecificPluginsList(PluginBase.PUMP);
-        activePump = (PumpInterface) getTheOneEnabledInArray(pluginsInCategory, PluginBase.PUMP);
-        if (activePump == null)
-            activePump = VirtualPumpPlugin.getPlugin(); // for NSClient build
-        this.setFragmentVisiblities(((PluginBase) activePump).getName(), pluginsInCategory, PluginBase.PUMP);
+        // PluginType.PUMP
+        pluginsInCategory = MainApp.getSpecificPluginsList(PluginType.PUMP);
+        activePump = (PumpInterface) getTheOneEnabledInArray(pluginsInCategory, PluginType.PUMP);
+        if (activePump == null) {
+            activePump = VirtualPumpPlugin.getPlugin();
+            VirtualPumpPlugin.getPlugin().setPluginEnabled(PluginType.PUMP, true);
+        }
+        this.setFragmentVisiblities(((PluginBase) activePump).getName(), pluginsInCategory, PluginType.PUMP);
 
-        // PluginBase.LOOP
-        activeLoop = this.determineActivePlugin(PluginBase.LOOP);
+        // PluginType.LOOP
+        activeLoop = this.determineActivePlugin(PluginType.LOOP);
 
-        // PluginBase.TREATMENT
-        activeTreatments = this.determineActivePlugin(PluginBase.TREATMENT);
+        // PluginType.TREATMENT
+        activeTreatments = this.determineActivePlugin(PluginType.TREATMENT);
     }
 
     /**
@@ -292,14 +344,14 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
      * @param <T>
      * @return
      */
-    private <T> T determineActivePlugin(Class<T> pluginInterface, int pluginType) {
+    private <T> T determineActivePlugin(Class<T> pluginInterface, PluginType pluginType) {
         ArrayList<PluginBase> pluginsInCategory;
         pluginsInCategory = MainApp.getSpecificPluginsListByInterface(pluginInterface);
 
         return this.determineActivePlugin(pluginsInCategory, pluginType);
     }
 
-    private <T> T determineActivePlugin(int pluginType) {
+    private <T> T determineActivePlugin(PluginType pluginType) {
         ArrayList<PluginBase> pluginsInCategory;
         pluginsInCategory = MainApp.getSpecificPluginsList(pluginType);
 
@@ -321,7 +373,7 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
      * @return
      */
     private <T> T determineActivePlugin(ArrayList<PluginBase> pluginsInCategory,
-                                        int pluginType) {
+                                        PluginType pluginType) {
         T activePlugin = (T) getTheOneEnabledInArray(pluginsInCategory, pluginType);
 
         if (activePlugin != null) {
@@ -333,7 +385,7 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
     }
 
     private void setFragmentVisiblities(String activePluginName, ArrayList<PluginBase> pluginsInCategory,
-                                        int pluginType) {
+                                        PluginType pluginType) {
         if (Config.logConfigBuilder)
             log.debug("Selected interface: " + activePluginName);
         for (PluginBase p : pluginsInCategory) {
@@ -344,7 +396,7 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
     }
 
     @Nullable
-    private PluginBase getTheOneEnabledInArray(ArrayList<PluginBase> pluginsInCategory, int type) {
+    private PluginBase getTheOneEnabledInArray(ArrayList<PluginBase> pluginsInCategory, PluginType type) {
         PluginBase found = null;
         for (PluginBase p : pluginsInCategory) {
             if (p.isEnabled(type) && found == null) {
@@ -355,8 +407,8 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
             }
         }
         // If none enabled, enable first one
-        if (found == null && pluginsInCategory.size() > 0)
-            found = pluginsInCategory.get(0);
+        //if (found == null && pluginsInCategory.size() > 0)
+        //    found = pluginsInCategory.get(0);
         return found;
     }
 
@@ -365,6 +417,9 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
      */
     public void applyTBRRequest(APSResult request, Profile profile, Callback callback) {
         if (!request.tempBasalRequested) {
+            if (callback != null) {
+                callback.result(new PumpEnactResult().enacted(false).success(true).comment(MainApp.gs(R.string.nochangerequested))).run();
+            }
             return;
         }
 
@@ -374,17 +429,17 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
         request.rate = MainApp.getConstraintChecker().applyBasalConstraints(request.rateConstraint, profile).value();
 
         if (!pump.isInitialized()) {
-            log.debug("applyAPSRequest: " + MainApp.sResources.getString(R.string.pumpNotInitialized));
+            log.debug("applyAPSRequest: " + MainApp.gs(R.string.pumpNotInitialized));
             if (callback != null) {
-                callback.result(new PumpEnactResult().comment(MainApp.sResources.getString(R.string.pumpNotInitialized)).enacted(false).success(false)).run();
+                callback.result(new PumpEnactResult().comment(MainApp.gs(R.string.pumpNotInitialized)).enacted(false).success(false)).run();
             }
             return;
         }
 
         if (pump.isSuspended()) {
-            log.debug("applyAPSRequest: " + MainApp.sResources.getString(R.string.pumpsuspended));
+            log.debug("applyAPSRequest: " + MainApp.gs(R.string.pumpsuspended));
             if (callback != null) {
-                callback.result(new PumpEnactResult().comment(MainApp.sResources.getString(R.string.pumpsuspended)).enacted(false).success(false)).run();
+                callback.result(new PumpEnactResult().comment(MainApp.gs(R.string.pumpsuspended)).enacted(false).success(false)).run();
             }
             return;
         }
@@ -393,7 +448,7 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
             log.debug("applyAPSRequest: " + request.toString());
 
         long now = System.currentTimeMillis();
-        TemporaryBasal activeTemp = getTempBasalFromHistory(now);
+        TemporaryBasal activeTemp = activeTreatments.getTempBasalFromHistory(now);
         if ((request.rate == 0 && request.duration == 0) || Math.abs(request.rate - pump.getBaseBasalRate()) < pump.getPumpDescription().basalStep) {
             if (activeTemp != null) {
                 if (Config.logCongigBuilderActions)
@@ -430,7 +485,7 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
             return;
         }
 
-        long lastBolusTime = getLastBolusTime();
+        long lastBolusTime = activeTreatments.getLastBolusTime();
         if (lastBolusTime != 0 && lastBolusTime + 3 * 60 * 1000 > System.currentTimeMillis()) {
             log.debug("SMB requested but still in 3 min interval");
             if (callback != null) {
@@ -444,17 +499,17 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
         PumpInterface pump = getActivePump();
 
         if (!pump.isInitialized()) {
-            log.debug("applySMBRequest: " + MainApp.sResources.getString(R.string.pumpNotInitialized));
+            log.debug("applySMBRequest: " + MainApp.gs(R.string.pumpNotInitialized));
             if (callback != null) {
-                callback.result(new PumpEnactResult().comment(MainApp.sResources.getString(R.string.pumpNotInitialized)).enacted(false).success(false)).run();
+                callback.result(new PumpEnactResult().comment(MainApp.gs(R.string.pumpNotInitialized)).enacted(false).success(false)).run();
             }
             return;
         }
 
         if (pump.isSuspended()) {
-            log.debug("applySMBRequest: " + MainApp.sResources.getString(R.string.pumpsuspended));
+            log.debug("applySMBRequest: " + MainApp.gs(R.string.pumpsuspended));
             if (callback != null) {
-                callback.result(new PumpEnactResult().comment(MainApp.sResources.getString(R.string.pumpsuspended)).enacted(false).success(false)).run();
+                callback.result(new PumpEnactResult().comment(MainApp.gs(R.string.pumpsuspended)).enacted(false).success(false)).run();
             }
             return;
         }
@@ -474,178 +529,22 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
         getCommandQueue().bolus(detailedBolusInfo, callback);
     }
 
-    //  ****** Treatments interface *****
-    @Override
-    public void updateTotalIOBTreatments() {
-        activeTreatments.updateTotalIOBTreatments();
-    }
-
-    @Override
-    public void updateTotalIOBTempBasals() {
-        activeTreatments.updateTotalIOBTempBasals();
-    }
-
-    @Override
-    public IobTotal getLastCalculationTreatments() {
-        return activeTreatments.getLastCalculationTreatments();
-    }
-
-    @Override
-    public IobTotal getCalculationToTimeTreatments(long time) {
-        return activeTreatments.getCalculationToTimeTreatments(time);
-    }
-
-    @Override
-    public IobTotal getLastCalculationTempBasals() {
-        return activeTreatments.getLastCalculationTempBasals();
-    }
-
-    @Override
-    public IobTotal getCalculationToTimeTempBasals(long time) {
-        return activeTreatments.getCalculationToTimeTempBasals(time);
-    }
-
-    @Override
-    public MealData getMealData() {
-        return activeTreatments.getMealData();
-    }
-
-    @Override
-    public List<Treatment> getTreatmentsFromHistory() {
-        return activeTreatments.getTreatmentsFromHistory();
-    }
-
-    @Override
-    public List<Treatment> getTreatments5MinBackFromHistory(long time) {
-        return activeTreatments.getTreatments5MinBackFromHistory(time);
-    }
-
-    @Override
-    public long getLastBolusTime() {
-        return activeTreatments.getLastBolusTime();
-    }
-
-    @Override
-    public boolean isInHistoryRealTempBasalInProgress() {
-        return activeTreatments.isInHistoryRealTempBasalInProgress();
-    }
-
-    @Override
-    @Nullable
-    public TemporaryBasal getRealTempBasalFromHistory(long time) {
-        return activeTreatments.getRealTempBasalFromHistory(time);
-    }
-
-    @Override
-    public boolean isTempBasalInProgress() {
-        return activeTreatments != null && activeTreatments.isTempBasalInProgress();
-    }
-
-    @Override
-    @Nullable
-    public TemporaryBasal getTempBasalFromHistory(long time) {
-        return activeTreatments != null ? activeTreatments.getTempBasalFromHistory(time) : null;
-    }
-
-    @Override
-    public Intervals<TemporaryBasal> getTemporaryBasalsFromHistory() {
-        return activeTreatments.getTemporaryBasalsFromHistory();
-    }
-
-    @Override
-    public boolean addToHistoryTempBasal(TemporaryBasal tempBasal) {
-        boolean newRecordCreated = activeTreatments.addToHistoryTempBasal(tempBasal);
-        if (newRecordCreated) {
-            if (tempBasal.durationInMinutes == 0)
-                NSUpload.uploadTempBasalEnd(tempBasal.date, false, tempBasal.pumpId);
-            else if (tempBasal.isAbsolute)
-                NSUpload.uploadTempBasalStartAbsolute(tempBasal, null);
-            else
-                NSUpload.uploadTempBasalStartPercent(tempBasal);
-        }
-        return newRecordCreated;
-    }
-
-    @Override
-    public boolean isInHistoryExtendedBoluslInProgress() {
-        return activeTreatments.isInHistoryExtendedBoluslInProgress();
-    }
-
-    @Override
-    @Nullable
-    public ExtendedBolus getExtendedBolusFromHistory(long time) {
-        return activeTreatments.getExtendedBolusFromHistory(time);
-    }
-
-    @Override
-    public boolean addToHistoryExtendedBolus(ExtendedBolus extendedBolus) {
-        boolean newRecordCreated = activeTreatments.addToHistoryExtendedBolus(extendedBolus);
-        if (newRecordCreated) {
-            if (extendedBolus.durationInMinutes == 0) {
-                if (activePump.isFakingTempsByExtendedBoluses())
-                    NSUpload.uploadTempBasalEnd(extendedBolus.date, true, extendedBolus.pumpId);
-                else
-                    NSUpload.uploadExtendedBolusEnd(extendedBolus.date, extendedBolus.pumpId);
-            } else if (activePump.isFakingTempsByExtendedBoluses())
-                NSUpload.uploadTempBasalStartAbsolute(new TemporaryBasal(extendedBolus), extendedBolus.insulin);
-            else
-                NSUpload.uploadExtendedBolus(extendedBolus);
-        }
-        return newRecordCreated;
-    }
-
-    @Override
-    public Intervals<ExtendedBolus> getExtendedBolusesFromHistory() {
-        return activeTreatments.getExtendedBolusesFromHistory();
-    }
-
-    @Override
-    // return true if new record is created
-    public boolean addToHistoryTreatment(DetailedBolusInfo detailedBolusInfo) {
-        boolean newRecordCreated = activeTreatments.addToHistoryTreatment(detailedBolusInfo);
-        if (newRecordCreated && detailedBolusInfo.isValid)
-            NSUpload.uploadBolusWizardRecord(detailedBolusInfo);
-        return newRecordCreated;
-    }
-
-    @Override
-    @Nullable
-    public TempTarget getTempTargetFromHistory() {
-        return activeTreatments.getTempTargetFromHistory(System.currentTimeMillis());
-    }
-
-    @Override
-    @Nullable
-    public TempTarget getTempTargetFromHistory(long time) {
-        return activeTreatments.getTempTargetFromHistory(time);
-    }
-
-    @Override
-    public Intervals<TempTarget> getTempTargetsFromHistory() {
-        return activeTreatments.getTempTargetsFromHistory();
-    }
-
-    @Override
-    @Nullable
-    public ProfileSwitch getProfileSwitchFromHistory(long time) {
-        return activeTreatments.getProfileSwitchFromHistory(time);
-    }
-
-    @Override
-    public ProfileIntervals<ProfileSwitch> getProfileSwitchesFromHistory() {
-        return activeTreatments.getProfileSwitchesFromHistory();
-    }
-
-    @Override
-    public void addToHistoryProfileSwitch(ProfileSwitch profileSwitch) {
-        MainApp.bus().post(new EventDismissNotification(Notification.PROFILE_SWITCH_MISSING));
-        activeTreatments.addToHistoryProfileSwitch(profileSwitch);
-        NSUpload.uploadProfileSwitch(profileSwitch);
-    }
-
-    @Override
-    public long oldestDataAvailable() {
-        return activeTreatments.oldestDataAvailable();
+    @Subscribe
+    public void onProfileSwitch(EventProfileSwitchChange ignored) {
+        getCommandQueue().setProfile(getProfile(), new Callback() {
+            @Override
+            public void run() {
+                if (!result.success) {
+                    Intent i = new Intent(MainApp.instance(), ErrorHelperActivity.class);
+                    i.putExtra("soundid", R.raw.boluserror);
+                    i.putExtra("status", result.comment);
+                    i.putExtra("title", MainApp.gs(R.string.failedupdatebasalprofile));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    MainApp.instance().startActivity(i);
+                }
+                MainApp.bus().post(new EventNewBasalProfile());
+            }
+        });
     }
 
     public String getProfileName() {
@@ -661,7 +560,7 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
     }
 
     public String getProfileName(long time, boolean customized) {
-        ProfileSwitch profileSwitch = getProfileSwitchFromHistory(time);
+        ProfileSwitch profileSwitch = activeTreatments.getProfileSwitchFromHistory(time);
         if (profileSwitch != null) {
             if (profileSwitch.profileJson != null) {
                 return customized ? profileSwitch.getCustomizedName() : profileSwitch.profileName;
@@ -698,7 +597,7 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
             return null; //app not initialized
         }
         //log.debug("Profile for: " + new Date(time).toLocaleString() + " : " + getProfileName(time));
-        ProfileSwitch profileSwitch = getProfileSwitchFromHistory(time);
+        ProfileSwitch profileSwitch = activeTreatments.getProfileSwitchFromHistory(time);
         if (profileSwitch != null) {
             if (profileSwitch.profileJson != null) {
                 return profileSwitch.getProfileObject();
@@ -708,12 +607,12 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
                     return profile;
             }
         }
-        if (getProfileSwitchesFromHistory().size() > 0) {
+        if (activeTreatments.getProfileSwitchesFromHistory().size() > 0) {
             FabricPrivacy.getInstance().logCustom(new CustomEvent("CatchedError")
                     .putCustomAttribute("buildversion", BuildConfig.BUILDVERSION)
                     .putCustomAttribute("version", BuildConfig.VERSION)
                     .putCustomAttribute("time", time)
-                    .putCustomAttribute("getProfileSwitchesFromHistory", getProfileSwitchesFromHistory().toString())
+                    .putCustomAttribute("getProfileSwitchesFromHistory", activeTreatments.getProfileSwitchesFromHistory().toString())
             );
         }
         log.debug("getProfile at the end: returning null");
@@ -721,7 +620,7 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
     }
 
     public void disconnectPump(int durationInMinutes, Profile profile) {
-        getActiveLoop().disconnectTo(System.currentTimeMillis() + durationInMinutes * 60 * 1000L);
+        LoopPlugin.getPlugin().disconnectTo(System.currentTimeMillis() + durationInMinutes * 60 * 1000L);
         getCommandQueue().tempBasalPercent(0, durationInMinutes, true, profile, new Callback() {
             @Override
             public void run() {
@@ -730,7 +629,7 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
                 }
             }
         });
-        if (getActivePump().getPumpDescription().isExtendedBolusCapable && isInHistoryExtendedBoluslInProgress()) {
+        if (getActivePump().getPumpDescription().isExtendedBolusCapable && activeTreatments.isInHistoryExtendedBoluslInProgress()) {
             getCommandQueue().cancelExtended(new Callback() {
                 @Override
                 public void run() {
@@ -744,7 +643,7 @@ public class ConfigBuilderPlugin implements PluginBase, TreatmentsInterface {
     }
 
     public void suspendLoop(int durationInMinutes) {
-        getActiveLoop().suspendTo(System.currentTimeMillis() + durationInMinutes * 60 * 1000);
+        LoopPlugin.getPlugin().suspendTo(System.currentTimeMillis() + durationInMinutes * 60 * 1000);
         getCommandQueue().cancelTempBasal(true, new Callback() {
             @Override
             public void run() {

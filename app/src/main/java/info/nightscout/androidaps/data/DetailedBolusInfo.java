@@ -30,10 +30,26 @@ public class DetailedBolusInfo {
     public long pumpId = 0;                // id of record if comming from pump history (not a newly created treatment)
     public boolean isSMB = false;          // is a Super-MicroBolus
     public long deliverAt = 0;             // SMB should be delivered within 1 min from this time
+    public String notes = null;
 
     public DetailedBolusInfo copy() {
-        Cloner cloner = new Cloner();
-        return cloner.deepClone(this);
+        DetailedBolusInfo n = new DetailedBolusInfo();
+        n.date = date;
+        n.eventType = eventType;
+        n.insulin = insulin;
+        n.carbs = carbs;
+        n.source = source;
+        n.isValid = isValid;
+        n.glucose = glucose;
+        n.glucoseType = glucoseType;
+        n.carbTime = carbTime;
+        n.boluscalc = boluscalc;
+        n.context = context;
+        n.pumpId = pumpId;
+        n.isSMB = isSMB;
+        n.deliverAt = deliverAt;
+        n.notes = notes;
+        return n;
     }
 
     @Override

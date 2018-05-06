@@ -1,11 +1,16 @@
 package info.nightscout.androidaps.plugins.Loop;
 
+import android.annotation.SuppressLint;
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.TaskStackBuilder;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
+import android.os.SystemClock;
+import android.support.annotation.NonNull;
 import android.support.v4.app.NotificationCompat;
 
 import com.crashlytics.android.answers.CustomEvent;
@@ -23,12 +28,17 @@ import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.R;
 import info.nightscout.androidaps.data.Profile;
 import info.nightscout.androidaps.data.PumpEnactResult;
+import info.nightscout.androidaps.db.BgReading;
+import info.nightscout.androidaps.db.DatabaseHelper;
+import info.nightscout.androidaps.events.Event;
 import info.nightscout.androidaps.events.EventNewBG;
 import info.nightscout.androidaps.events.EventTreatmentChange;
 import info.nightscout.androidaps.interfaces.APSInterface;
-import info.nightscout.androidaps.interfaces.PluginBase;
-import info.nightscout.androidaps.interfaces.PumpInterface;
 import info.nightscout.androidaps.interfaces.Constraint;
+import info.nightscout.androidaps.interfaces.PluginBase;
+import info.nightscout.androidaps.interfaces.PluginDescription;
+import info.nightscout.androidaps.interfaces.PluginType;
+import info.nightscout.androidaps.interfaces.PumpInterface;
 import info.nightscout.androidaps.plugins.ConfigBuilder.ConfigBuilderPlugin;
 import info.nightscout.androidaps.plugins.IobCobCalculator.events.EventAutosensCalculationFinished;
 import info.nightscout.androidaps.plugins.Loop.events.EventLoopSetLastRunGui;
@@ -43,20 +53,22 @@ import info.nightscout.utils.SP;
 /**
  * Created by mike on 05.08.2016.
  */
-public class LoopPlugin implements PluginBase {
+public class LoopPlugin extends PluginBase {
     private static Logger log = LoggerFactory.getLogger(LoopPlugin.class);
+
+    public static final String CHANNEL_ID = "AndroidAPS-Openloop";
+
+    long lastBgTriggeredRun = 0;
 
     protected static LoopPlugin loopPlugin;
 
+    @NonNull
     public static LoopPlugin getPlugin() {
         if (loopPlugin == null) {
             loopPlugin = new LoopPlugin();
         }
         return loopPlugin;
     }
-
-    private boolean pluginEnabled = false;
-    private boolean fragmentVisible = false;
 
     private long loopSuspendedTill = 0L; // end of manual loop suspend
     private boolean isSuperBolus = false;
@@ -76,92 +88,76 @@ public class LoopPlugin implements PluginBase {
     static public LastRun lastRun = null;
 
     public LoopPlugin() {
-        MainApp.bus().register(this);
+        super(new PluginDescription()
+                .mainType(PluginType.LOOP)
+                .fragmentClass(LoopFragment.class.getName())
+                .pluginName(R.string.loop)
+                .shortName(R.string.loop_shortname)
+                .preferencesId(R.xml.pref_closedmode)
+        );
         loopSuspendedTill = SP.getLong("loopSuspendedTill", 0L);
         isSuperBolus = SP.getBoolean("isSuperBolus", false);
         isDisconnected = SP.getBoolean("isDisconnected", false);
     }
 
     @Override
-    public String getFragmentClass() {
-        return LoopFragment.class.getName();
+    protected void onStart() {
+        MainApp.bus().register(this);
+        createNotificationChannel();
+        super.onStart();
     }
 
-    @Override
-    public int getType() {
-        return PluginBase.LOOP;
-    }
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 
-    @Override
-    public String getName() {
-        return MainApp.instance().gs(R.string.loop);
-    }
-
-    @Override
-    public String getNameShort() {
-        String name = MainApp.gs(R.string.loop_shortname);
-        if (!name.trim().isEmpty()) {
-            //only if translation exists
-            return name;
-        }
-        // use long name as fallback
-        return getName();
-    }
-
-    @Override
-    public boolean isEnabled(int type) {
-        boolean pumpCapable = ConfigBuilderPlugin.getActivePump() == null || ConfigBuilderPlugin.getActivePump().getPumpDescription().isTempBasalCapable;
-        return type == LOOP && pluginEnabled && pumpCapable;
-    }
-
-    @Override
-    public boolean isVisibleInTabs(int type) {
-        boolean pumpCapable = ConfigBuilderPlugin.getActivePump() == null || ConfigBuilderPlugin.getActivePump().getPumpDescription().isTempBasalCapable;
-        return type == LOOP && fragmentVisible && pumpCapable;
-    }
-
-    @Override
-    public boolean canBeHidden(int type) {
-        return true;
-    }
-
-    @Override
-    public boolean hasFragment() {
-        return true;
-    }
-
-    @Override
-    public boolean showInList(int type) {
-        return true;
-    }
-
-    @Override
-    public void setPluginEnabled(int type, boolean pluginEnabled) {
-        if (type == LOOP) this.pluginEnabled = pluginEnabled;
-    }
-
-    @Override
-    public void setFragmentVisible(int type, boolean fragmentVisible) {
-        if (type == LOOP) this.fragmentVisible = fragmentVisible;
-    }
-
-    @Override
-    public int getPreferencesId() {
-        return R.xml.pref_closedmode;
-    }
-
-    @Subscribe
-    public void onStatusEvent(final EventTreatmentChange ev) {
-        if (ev.treatment == null || !ev.treatment.isSMB) {
-            invoke("EventTreatmentChange", true);
+            NotificationManager mNotificationManager =
+                    (NotificationManager) MainApp.instance().getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            @SuppressLint("WrongConstant") NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
+                    CHANNEL_ID,
+                    NotificationManager.IMPORTANCE_HIGH);
+            mNotificationManager.createNotificationChannel(channel);
         }
     }
 
+    @Override
+    protected void onStop() {
+        super.onStop();
+        MainApp.bus().unregister(this);
+    }
+
+    @Override
+    public boolean specialEnableCondition() {
+        PumpInterface pump = ConfigBuilderPlugin.getActivePump();
+        return pump == null || pump.getPumpDescription().isTempBasalCapable;
+    }
+    
+    /**
+     * This method is triggered once autosens calculation has completed, so the LoopPlugin
+     * has current data to work with. However, autosens calculation can be triggered by multiple
+     * sources and currently only a new BG should trigger a loop run. Hence we return early if
+     * the event causing the calculation is not EventNewBg.
+     *
+     *  Callers of {@link info.nightscout.androidaps.plugins.IobCobCalculator.IobCobCalculatorPlugin#runCalculation(String, long, boolean, Event)}
+     *  are sources triggering a calculation which triggers this method upon completion.
+     */
     @Subscribe
     public void onStatusEvent(final EventAutosensCalculationFinished ev) {
-        if (ev.cause instanceof EventNewBG) {
-            invoke(ev.getClass().getSimpleName() + "(" + ev.cause.getClass().getSimpleName() + ")", true);
+        if (!(ev.cause instanceof EventNewBG)) {
+            // Autosens calculation not triggered by a new BG
+            return;
         }
+        BgReading bgReading = DatabaseHelper.actualBg();
+        if (bgReading == null) {
+            // BG outdated
+            return;
+        }
+        if (bgReading.date <= lastBgTriggeredRun) {
+            // already looped with that value
+            return;
+        }
+
+        lastBgTriggeredRun = bgReading.date;
+        invoke("AutosenseCalculation for " + bgReading, true);
     }
 
     public long suspendedTo() {
@@ -251,14 +247,18 @@ public class LoopPlugin implements PluginBase {
         return isDisconnected;
     }
 
-    public void invoke(String initiator, boolean allowNotification) {
+    public synchronized void invoke(String initiator, boolean allowNotification){
+        invoke(initiator, allowNotification, false);
+    }
+
+    public synchronized void invoke(String initiator, boolean allowNotification, boolean tempBasalFallback) {
         try {
             if (Config.logFunctionCalls)
                 log.debug("invoke from " + initiator);
             Constraint<Boolean> loopEnabled = MainApp.getConstraintChecker().isLoopInvokationAllowed();
 
             if (!loopEnabled.value()) {
-                String message = MainApp.sResources.getString(R.string.loopdisabled) + "\n" + loopEnabled.getReasons();
+                String message = MainApp.gs(R.string.loopdisabled) + "\n" + loopEnabled.getReasons();
                 log.debug(message);
                 MainApp.bus().post(new EventLoopSetLastRunGui(message));
                 return;
@@ -266,14 +266,14 @@ public class LoopPlugin implements PluginBase {
             final PumpInterface pump = ConfigBuilderPlugin.getActivePump();
             APSResult result = null;
 
-            if (!isEnabled(PluginBase.LOOP))
+            if (!isEnabled(PluginType.LOOP))
                 return;
 
             Profile profile = MainApp.getConfigBuilder().getProfile();
 
             if (!MainApp.getConfigBuilder().isProfileValid("Loop")) {
-                log.debug(MainApp.sResources.getString(R.string.noprofileselected));
-                MainApp.bus().post(new EventLoopSetLastRunGui(MainApp.sResources.getString(R.string.noprofileselected)));
+                log.debug(MainApp.gs(R.string.noprofileselected));
+                MainApp.bus().post(new EventLoopSetLastRunGui(MainApp.gs(R.string.noprofileselected)));
                 return;
             }
 
@@ -281,14 +281,14 @@ public class LoopPlugin implements PluginBase {
             if (pump.getBaseBasalRate() < 0.01d) return;
 
             APSInterface usedAPS = ConfigBuilderPlugin.getActiveAPS();
-            if (usedAPS != null && ((PluginBase) usedAPS).isEnabled(PluginBase.APS)) {
-                usedAPS.invoke(initiator);
+            if (usedAPS != null && ((PluginBase) usedAPS).isEnabled(PluginType.APS)) {
+                usedAPS.invoke(initiator, tempBasalFallback);
                 result = usedAPS.getLastAPSResult();
             }
 
             // Check if we have any result
             if (result == null) {
-                MainApp.bus().post(new EventLoopSetLastRunGui(MainApp.sResources.getString(R.string.noapsselected)));
+                MainApp.bus().post(new EventLoopSetLastRunGui(MainApp.gs(R.string.noapsselected)));
                 return;
             }
 
@@ -317,14 +317,14 @@ public class LoopPlugin implements PluginBase {
             NSUpload.uploadDeviceStatus();
 
             if (isSuspended()) {
-                log.debug(MainApp.sResources.getString(R.string.loopsuspended));
-                MainApp.bus().post(new EventLoopSetLastRunGui(MainApp.sResources.getString(R.string.loopsuspended)));
+                log.debug(MainApp.gs(R.string.loopsuspended));
+                MainApp.bus().post(new EventLoopSetLastRunGui(MainApp.gs(R.string.loopsuspended)));
                 return;
             }
 
             if (pump.isSuspended()) {
-                log.debug(MainApp.sResources.getString(R.string.pumpsuspended));
-                MainApp.bus().post(new EventLoopSetLastRunGui(MainApp.sResources.getString(R.string.pumpsuspended)));
+                log.debug(MainApp.gs(R.string.pumpsuspended));
+                MainApp.bus().post(new EventLoopSetLastRunGui(MainApp.gs(R.string.pumpsuspended)));
                 return;
             }
 
@@ -346,16 +346,23 @@ public class LoopPlugin implements PluginBase {
                             if (result.enacted || result.success) {
                                 lastRun.tbrSetByPump = result;
                                 lastRun.lastEnact = lastRun.lastAPSRun;
-                            }
-                            MainApp.bus().post(new EventLoopUpdateGui());
-                        }
-                    });
-                    MainApp.getConfigBuilder().applySMBRequest(resultAfterConstraints, new Callback() {
-                        @Override
-                        public void run() {
-                            if (result.enacted || result.success) {
-                                lastRun.smbSetByPump = result;
-                                lastRun.lastEnact = lastRun.lastAPSRun;
+                                MainApp.getConfigBuilder().applySMBRequest(resultAfterConstraints, new Callback() {
+                                    @Override
+                                    public void run() {
+                                        //Callback is only called if a bolus was acutally requested
+                                        if (result.enacted || result.success) {
+                                            lastRun.smbSetByPump = result;
+                                            lastRun.lastEnact = lastRun.lastAPSRun;
+                                        } else {
+                                            new Thread(() -> {
+                                                SystemClock.sleep(1000);
+                                                LoopPlugin.getPlugin().invoke("tempBasalFallback", allowNotification, true);
+                                            }).start();
+                                            FabricPrivacy.getInstance().logCustom(new CustomEvent("Loop_Run_TempBasalFallback"));
+                                        }
+                                        MainApp.bus().post(new EventLoopUpdateGui());
+                                    }
+                                });
                             }
                             MainApp.bus().post(new EventLoopUpdateGui());
                         }
@@ -367,9 +374,9 @@ public class LoopPlugin implements PluginBase {
             } else {
                 if (result.isChangeRequested() && allowNotification) {
                     NotificationCompat.Builder builder =
-                            new NotificationCompat.Builder(MainApp.instance().getApplicationContext());
+                            new NotificationCompat.Builder(MainApp.instance().getApplicationContext(), CHANNEL_ID);
                     builder.setSmallIcon(R.drawable.notif_icon)
-                            .setContentTitle(MainApp.sResources.getString(R.string.openloop_newsuggestion))
+                            .setContentTitle(MainApp.gs(R.string.openloop_newsuggestion))
                             .setContentText(resultAfterConstraints.toString())
                             .setAutoCancel(true)
                             .setPriority(Notification.PRIORITY_HIGH)

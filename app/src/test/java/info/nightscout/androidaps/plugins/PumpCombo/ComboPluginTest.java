@@ -12,29 +12,30 @@ import org.powermock.modules.junit4.PowerMockRunner;
 import info.AAPSMocker;
 import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.interfaces.Constraint;
-import info.nightscout.androidaps.interfaces.PluginBase;
+import info.nightscout.androidaps.interfaces.PluginType;
 import info.nightscout.androidaps.plugins.ConfigBuilder.ConfigBuilderPlugin;
 import info.nightscout.androidaps.plugins.PumpCombo.ruffyscripter.history.Bolus;
+import info.nightscout.androidaps.queue.CommandQueue;
 import info.nightscout.utils.ToastUtils;
 
 import static org.junit.Assert.assertEquals;
 
 @RunWith(PowerMockRunner.class)
-@PrepareForTest({MainApp.class, ConfigBuilderPlugin.class, ToastUtils.class, Context.class})
+@PrepareForTest({MainApp.class, ConfigBuilderPlugin.class, ToastUtils.class, Context.class, CommandQueue.class})
 public class ComboPluginTest {
 
     ComboPlugin comboPlugin;
 
     @Test
     public void invalidBasalRateOnComboPumpShouldLimitLoopInvokation() throws Exception {
-        comboPlugin.setPluginEnabled(PluginBase.PUMP, true);
+        comboPlugin.setPluginEnabled(PluginType.PUMP, true);
         comboPlugin.setValidBasalRateProfileSelectedOnPump(false);
 
         Constraint<Boolean> c = new Constraint<>(true);
         c = comboPlugin.isLoopInvokationAllowed(c);
         Assert.assertEquals("Combo: No valid basal rate read from pump", c.getReasons());
         Assert.assertEquals(Boolean.FALSE, c.value());
-        comboPlugin.setPluginEnabled(PluginBase.PUMP, false);
+        comboPlugin.setPluginEnabled(PluginType.PUMP, false);
     }
 
     @Test
@@ -63,6 +64,7 @@ public class ComboPluginTest {
         AAPSMocker.mockConfigBuilder();
         AAPSMocker.mockBus();
         AAPSMocker.mockStrings();
+        AAPSMocker.mockCommandQueue();
 
         comboPlugin = ComboPlugin.getPlugin();
     }

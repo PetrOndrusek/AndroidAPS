@@ -18,13 +18,14 @@ import java.lang.reflect.InvocationTargetException;
 
 import info.nightscout.androidaps.Config;
 import info.nightscout.androidaps.Constants;
-import info.nightscout.androidaps.MainApp;
+import info.nightscout.androidaps.R;
 import info.nightscout.androidaps.data.GlucoseStatus;
 import info.nightscout.androidaps.data.IobTotal;
 import info.nightscout.androidaps.data.MealData;
 import info.nightscout.androidaps.data.Profile;
 import info.nightscout.androidaps.db.TemporaryBasal;
 import info.nightscout.androidaps.plugins.Loop.ScriptReader;
+import info.nightscout.androidaps.plugins.Treatments.TreatmentsPlugin;
 import info.nightscout.utils.SP;
 
 public class DetermineBasalAdapterMAJS {
@@ -181,7 +182,7 @@ public class DetermineBasalAdapterMAJS {
         }
 
         long now = System.currentTimeMillis();
-        TemporaryBasal tb = MainApp.getConfigBuilder().getTempBasalFromHistory(now);
+        TemporaryBasal tb = TreatmentsPlugin.getPlugin().getTempBasalFromHistory(now);
 
         mCurrentTemp = new JSONObject();
         mCurrentTemp.put("duration", tb != null ? tb.getPlannedRemainingMinutes() : 0);
@@ -197,7 +198,7 @@ public class DetermineBasalAdapterMAJS {
 
         mGlucoseStatus = new JSONObject();
         mGlucoseStatus.put("glucose", glucoseStatus.glucose);
-        if (SP.getBoolean("always_use_shortavg", false)) {
+        if (SP.getBoolean(R.string.key_always_use_shortavg, false)) {
             mGlucoseStatus.put("delta", glucoseStatus.short_avgdelta);
         } else {
             mGlucoseStatus.put("delta", glucoseStatus.delta);

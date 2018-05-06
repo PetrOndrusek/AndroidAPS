@@ -31,6 +31,7 @@ import info.nightscout.androidaps.plugins.IobCobCalculator.IobCobCalculatorPlugi
 import info.nightscout.androidaps.plugins.Loop.ScriptReader;
 import info.nightscout.androidaps.plugins.OpenAPSMA.LoggerCallback;
 import info.nightscout.androidaps.plugins.OpenAPSSMB.SMBDefaults;
+import info.nightscout.androidaps.plugins.Treatments.TreatmentsPlugin;
 import info.nightscout.utils.SP;
 
 public class DetermineBasalAdapterAMAJS {
@@ -211,16 +212,20 @@ public class DetermineBasalAdapterAMAJS {
         mProfile.put("skip_neutral_temps", true);
         mProfile.put("current_basal", basalrate);
         mProfile.put("temptargetSet", tempTargetSet);
-        mProfile.put("autosens_adjust_targets", SP.getBoolean("openapsama_autosens_adjusttargets", true));
-        //TODO: align with max-absorption model in AMA sensitivity
-        mProfile.put("min_5m_carbimpact", SP.getDouble("openapsama_min_5m_carbimpact", SMBDefaults.min_5m_carbimpact));
+        mProfile.put("autosens_adjust_targets", SP.getBoolean(R.string.key_openapsama_autosens_adjusttargets, true));
+        //align with max-absorption model in AMA sensitivity
+        if(mealData.usedMinCarbsImpact > 0){
+            mProfile.put("min_5m_carbimpact", mealData.usedMinCarbsImpact);
+        } else {
+            mProfile.put("min_5m_carbimpact", SP.getDouble(R.string.key_openapsama_min_5m_carbimpact, SMBDefaults.min_5m_carbimpact));
+        }
 
         if (units.equals(Constants.MMOL)) {
             mProfile.put("out_units", "mmol/L");
         }
 
         long now = System.currentTimeMillis();
-        TemporaryBasal tb = MainApp.getConfigBuilder().getTempBasalFromHistory(now);
+        TemporaryBasal tb = TreatmentsPlugin.getPlugin().getTempBasalFromHistory(now);
 
         mCurrentTemp = new JSONObject();
         mCurrentTemp.put("temp", "absolute");
@@ -228,7 +233,7 @@ public class DetermineBasalAdapterAMAJS {
         mCurrentTemp.put("rate", tb != null ? tb.tempBasalConvertedToAbsolute(now, profile) : 0d);
 
         // as we have non default temps longer than 30 mintues
-        TemporaryBasal tempBasal = MainApp.getConfigBuilder().getTempBasalFromHistory(System.currentTimeMillis());
+        TemporaryBasal tempBasal = TreatmentsPlugin.getPlugin().getTempBasalFromHistory(System.currentTimeMillis());
         if (tempBasal != null) {
             mCurrentTemp.put("minutesrunning", tempBasal.getRealDuration());
         }
@@ -238,7 +243,7 @@ public class DetermineBasalAdapterAMAJS {
         mGlucoseStatus = new JSONObject();
         mGlucoseStatus.put("glucose", glucoseStatus.glucose);
 
-        if (SP.getBoolean("always_use_shortavg", false)) {
+        if (SP.getBoolean(R.string.key_always_use_shortavg, false)) {
             mGlucoseStatus.put("delta", glucoseStatus.short_avgdelta);
         } else {
             mGlucoseStatus.put("delta", glucoseStatus.delta);
@@ -255,14 +260,14 @@ public class DetermineBasalAdapterAMAJS {
             mAutosensData = new JSONObject();
             mAutosensData.put("ratio", autosensDataRatio);
         } else {
-           mAutosensData = null;
+            mAutosensData = null;
         }
     }
 
 
     public Object makeParam(JSONObject jsonObject, Context rhino, Scriptable scope) {
 
-        if(jsonObject == null) return Undefined.instance;
+        if (jsonObject == null) return Undefined.instance;
 
         Object param = NativeJSON.parse(rhino, scope, jsonObject.toString(), new Callable() {
             @Override
@@ -274,8 +279,8 @@ public class DetermineBasalAdapterAMAJS {
     }
 
     public Object makeParamArray(JSONArray jsonArray, Context rhino, Scriptable scope) {
-            //Object param = NativeJSON.parse(rhino, scope, "{myarray: " + jsonArray.toString() + " }", new Callable() {
-            Object param = NativeJSON.parse(rhino, scope, jsonArray.toString(), new Callable() {
+        //Object param = NativeJSON.parse(rhino, scope, "{myarray: " + jsonArray.toString() + " }", new Callable() {
+        Object param = NativeJSON.parse(rhino, scope, jsonArray.toString(), new Callable() {
             @Override
             public Object call(Context context, Scriptable scriptable, Scriptable scriptable1, Object[] objects) {
                 return objects[1];
