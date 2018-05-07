@@ -18,6 +18,7 @@ import info.nightscout.androidaps.events.EventAppExit;
 import info.nightscout.androidaps.events.EventConfigBuilderChange;
 import info.nightscout.androidaps.events.EventPreferenceChange;
 import info.nightscout.androidaps.interfaces.PluginBase;
+import info.nightscout.androidaps.interfaces.PluginType;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.AlarmAck;
@@ -118,7 +119,7 @@ public class NSClientService extends Service {
 
     @Subscribe
     public void onStatusEvent(EventConfigBuilderChange ev) {
-        if (nsConfig.enabled != MainApp.getSpecificPlugin(NSClientPlugin.class).isEnabled(PluginBase.GENERAL)) {
+        if (nsConfig.enabled != MainApp.getSpecificPlugin(NSClientPlugin.class).isEnabled(PluginType.GENERAL)) {
             destroy();
             initialize();
         }
@@ -155,7 +156,7 @@ public class NSClientService extends Service {
 
     public NSConfiguration readPreferences() {
         NSConfiguration conf = new NSConfiguration();
-        conf.enabled = MainApp.getSpecificPlugin(NSClientPlugin.class).isEnabled(PluginBase.GENERAL);
+        conf.enabled = MainApp.getSpecificPlugin(NSClientPlugin.class).isEnabled(PluginType.GENERAL);
         conf.url = SP.getString(R.string.key_nsclientinternal_url, "");
         conf.apiSecret = SP.getString(R.string.key_nsclientinternal_api_secret, "");
         conf.device = SP.getString("careportal_enteredby", "");

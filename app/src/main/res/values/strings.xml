@@ -652,7 +652,7 @@
     <string name="ns_rest_enable_summary">Use lightweight version of communication saving battery and bandwidth, but loosing some responsivenesss.</string>
     <string name="key_ns_rest_upload_bg" translatable="false">ns_rest_upload_bg</string>
     <string name="ns_rest_upload_bg_title">Upload BGs to NS</string>
-    <string name="ns_rest_upload_bg_summary">ns_rest_sleep_seconds</string>
+    <string name="ns_rest_upload_bg_summary">Upload BGs received from different apps (like xDrip).</string>
     <string name="key_ns_rest_sleep_seconds" translatable="false">ns_rest_sleep_seconds</string>
     <string name="ns_rest_sleep_seconds_title">Seconds to sleep between cycles</string>
     <string name="ns_rest_sleep_seconds_summary"></string>

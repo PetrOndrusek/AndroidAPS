@@ -401,6 +401,35 @@ public class TreatmentService extends OrmLiteBaseService<DatabaseHelper> {
         return null;
     }
 
+    /**
+     * finds treatment by its (NSCLIENT) Id.
+     *
+     * @param _id
+     * @return
+     */
+    @Nullable
+    public Treatment findById(long _id) {
+        try {
+            Dao<Treatment, Long> daoTreatments = getDao();
+            QueryBuilder<Treatment, Long> queryBuilder = daoTreatments.queryBuilder();
+            Where where = queryBuilder.where();
+            where.eq("date", _id);
+            queryBuilder.limit(10L);
+            PreparedQuery<Treatment> preparedQuery = queryBuilder.prepare();
+            List<Treatment> trList = daoTreatments.query(preparedQuery);
+            if (trList.size() != 1) {
+                //log.debug("Treatment findTreatmentById query size: " + trList.size());
+                return null;
+            } else {
+                //log.debug("Treatment findTreatmentById found: " + trList.get(0).log());
+                return trList.get(0);
+            }
+        } catch (SQLException e) {
+            log.error("Unhandled exception", e);
+        }
+        return null;
+    }
+
     public List<Treatment> getTreatmentDataFromTime(long mills, boolean ascending) {
         try {
             Dao<Treatment, Long> daoTreatments = getDao();

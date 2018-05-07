@@ -20,6 +20,7 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,7 +29,6 @@ import info.nightscout.androidaps.MainApp;
 import info.nightscout.androidaps.data.ProfileStore;
 import info.nightscout.androidaps.db.DatabaseHelper;
 import info.nightscout.androidaps.db.DbRequest;
-import info.nightscout.androidaps.db.Treatment;
 import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.UploadQueue;
 import info.nightscout.androidaps.plugins.NSClientInternal.acks.NSAddAck;
@@ -48,6 +48,8 @@ import info.nightscout.androidaps.plugins.NSClientInternal.events.EventNSClientS
 import info.nightscout.androidaps.plugins.NSClientInternal.services.NSClientService;
 import info.nightscout.androidaps.plugins.NSClientInternal.services.AbstractTransportService;
 import info.nightscout.androidaps.plugins.NSClientInternal.services.WebsocketTransportService;
+import info.nightscout.androidaps.plugins.Treatments.Treatment;
+import info.nightscout.androidaps.plugins.Treatments.TreatmentsPlugin;
 import info.nightscout.utils.NSUpload;
 import info.nightscout.utils.Str;
 import okhttp3.MediaType;
@@ -293,10 +295,19 @@ public class RestTransportService extends AbstractTransportService {
             if (responseJson.has("_id")) {
                 String mongoId = responseJson.getString("_id");
 
-                Treatment treatment = MainApp.getDbHelper().findTreatmentById(dbr._id);
-                if (treatment != null) {
-                    treatment._id = mongoId;
-                    MainApp.getDbHelper().update(treatment);
+                try {
+                    JSONObject dataJson = new JSONObject(dbr.data);
+                    if (dataJson.has("date")) {
+                        String strDate = dataJson.getString("date");
+                        long date = Long.parseLong(strDate);
+                        date = DatabaseHelper.roundDateToSec(date);
+                        Treatment treatment = TreatmentsPlugin.getPlugin().getService().findById(date);
+                        if (treatment != null) {
+                            treatment._id = mongoId;
+                            TreatmentsPlugin.getPlugin().getService().update(treatment);
+                        }
+                    }
+                } catch (Exception ex){
                 }
             }
 

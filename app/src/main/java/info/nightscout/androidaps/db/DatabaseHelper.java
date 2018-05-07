@@ -8,6 +8,7 @@ import android.support.annotation.Nullable;
 import com.j256.ormlite.android.apptools.OrmLiteSqliteOpenHelper;
 import com.j256.ormlite.dao.CloseableIterator;
 import com.j256.ormlite.dao.Dao;
+import com.j256.ormlite.dao.DaoManager;
 import com.j256.ormlite.stmt.PreparedQuery;
 import com.j256.ormlite.stmt.QueryBuilder;
 import com.j256.ormlite.stmt.Where;
@@ -30,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 import info.nightscout.androidaps.Config;
 import info.nightscout.androidaps.Constants;
 import info.nightscout.androidaps.MainApp;
+import info.nightscout.androidaps.R;
 import info.nightscout.androidaps.data.Profile;
 import info.nightscout.androidaps.data.ProfileStore;
 import info.nightscout.androidaps.events.EventCareportalEventChange;
@@ -42,10 +44,15 @@ import info.nightscout.androidaps.events.EventReloadTempBasalData;
 import info.nightscout.androidaps.events.EventReloadTreatmentData;
 import info.nightscout.androidaps.events.EventTempBasalChange;
 import info.nightscout.androidaps.events.EventTempTargetChange;
+import info.nightscout.androidaps.events.EventTreatmentChange;
+import info.nightscout.androidaps.plugins.ConfigBuilder.ConfigBuilderPlugin;
 import info.nightscout.androidaps.plugins.IobCobCalculator.events.EventNewHistoryData;
+import info.nightscout.androidaps.plugins.Overview.events.EventNewNotification;
+import info.nightscout.androidaps.plugins.Overview.notifications.Notification;
 import info.nightscout.androidaps.plugins.PumpDanaR.activities.DanaRNSHistorySync;
 import info.nightscout.androidaps.plugins.PumpDanaR.comm.RecordTypes;
 import info.nightscout.androidaps.plugins.PumpVirtual.VirtualPumpPlugin;
+import info.nightscout.utils.DateUtil;
 import info.nightscout.utils.JsonHelper;
 import info.nightscout.utils.NSUpload;
 import info.nightscout.utils.PercentageSplitter;
@@ -1288,7 +1295,7 @@ public class DatabaseHelper extends OrmLiteSqliteOpenHelper {
 
     public void createCareportalEventFromJsonIfNotExists(JSONObject trJson) {
         try {
-            QueryBuilder<CareportalEvent, Long> queryBuilder;
+            QueryBuilder<CareportalEvent, Long> queryBuilder = null;
             queryBuilder = getDaoCareportalEvents().queryBuilder();
             Where where = queryBuilder.where();
             where.eq("_id", trJson.getString("_id")).or().eq("date", trJson.getLong("mills"));
