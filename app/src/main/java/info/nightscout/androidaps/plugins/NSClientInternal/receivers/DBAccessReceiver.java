@@ -91,7 +91,11 @@ public class DBAccessReceiver extends BroadcastReceiver {
                 dbr._id = nsclientid.toString();
 
                 if (shouldUpload()) {
-                    UploadQueue.add(dbr);
+                    Long resendAfterMills = null;
+                    if (bundles.containsKey("resendAfterMills")) {
+                        resendAfterMills = bundles.getLong("resendAfterMills");
+                    }
+                    UploadQueue.add(dbr, resendAfterMills);
                 }
                 if (collection.equals("treatments")) {
                     generateTreatmentOfflineBroadcast(dbr);

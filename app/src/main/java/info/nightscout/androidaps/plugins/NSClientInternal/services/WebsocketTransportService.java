@@ -149,7 +149,7 @@ public class WebsocketTransportService extends AbstractTransportService {
 
 
     @Override
-    public void resend(String reason, boolean startNow) {
+    public void resend(String reason, Long afterMills) {
 
         if (mUploadQueue.size() == 0)
             return;
@@ -159,7 +159,17 @@ public class WebsocketTransportService extends AbstractTransportService {
         mHandler.post(new Runnable() {
             @Override
             public void run() {
+
+                if (afterMills != null) {
+                    try {
+                        Thread.sleep(afterMills);
+                    } catch (InterruptedException e) {
+                        log.error(e.getMessage());
+                    }
+                }
+
                 if (mSocket == null || !mSocket.connected()) return;
+
 
                 if (lastResendTime > System.currentTimeMillis() - 10 * 1000L) {
                     log.debug("Skipping resend by lastResendTime: " + ((System.currentTimeMillis() - lastResendTime) / 1000L) + " sec");
@@ -296,7 +306,7 @@ public class WebsocketTransportService extends AbstractTransportService {
             if (Config.detailedLog)
                 EventNSClientNewLog.emit("PING", "received");
             // send data if there is something waiting
-            resend("Ping received", true);
+            resend("Ping received", 0L);
         }
     };
 

@@ -188,9 +188,9 @@ public class RestTransportService extends AbstractTransportService {
     }
 
     @Override
-    public void resend(final String reason, boolean startNow) {
-        if (startNow && batchScheduler != null) {
-            batchScheduler.activateAfter(0);  // just speed up the cycle activation
+    public void resend(final String reason, Long afterMills) {
+        if (afterMills != null && batchScheduler != null) {
+            batchScheduler.activateAfter(afterMills);  // just speed up the cycle activation
         }
     }
 
@@ -249,7 +249,12 @@ public class RestTransportService extends AbstractTransportService {
 
     private void uploadChanges() {
         CloseableIterator<DbRequest> iterator = null;
-        int maxcount = 30;
+        int maxcount = 60;
+
+        if (nsConfig != null && nsConfig.restSecondsSleep > maxcount) { // let's approximate max count to send from sleeping interval
+            maxcount = nsConfig.restSecondsSleep;
+        }
+
         try {
             iterator = MainApp.getDbHelper().getDbRequestInterator();
             try {

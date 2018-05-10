@@ -36,6 +36,7 @@ import info.nightscout.androidaps.plugins.ConfigBuilder.ConfigBuilderPlugin;
 import info.nightscout.androidaps.plugins.Loop.APSResult;
 import info.nightscout.androidaps.plugins.Loop.DeviceStatus;
 import info.nightscout.androidaps.plugins.Loop.LoopPlugin;
+import info.nightscout.androidaps.plugins.NSClientInternal.NSClientPlugin;
 import info.nightscout.androidaps.plugins.NSClientInternal.data.DbLogger;
 
 /**
@@ -467,6 +468,7 @@ public class NSUpload {
         Bundle bundle = new Bundle();
         bundle.putString("action", "dbAdd");
         bundle.putString("collection", "entries");
+        bundle.putLong("resendAfterMills", NSClientPlugin.NEW_BG_RESEND_AFTER_MILLIS);
         JSONObject data = new JSONObject();
         try {
             data.put("device", "AndroidAPS-" + sourceDevice);

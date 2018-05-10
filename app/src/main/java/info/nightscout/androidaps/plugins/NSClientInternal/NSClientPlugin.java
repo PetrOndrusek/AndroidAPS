@@ -39,6 +39,8 @@ import info.nightscout.utils.ToastUtils;
 public class NSClientPlugin extends PluginBase {
     private static Logger log = LoggerFactory.getLogger(NSClientPlugin.class);
 
+    public static final long NEW_BG_RESEND_AFTER_MILLIS = 15 * 1000;
+
     static NSClientPlugin nsClientPlugin;
 
     static public NSClientPlugin getPlugin() {
@@ -205,9 +207,9 @@ public class NSClientPlugin extends PluginBase {
         }
     }
 
-    void resend(String reason, boolean startNow) {
+    void resend(String reason, Long afterMillis) {
         if (nsClientService != null)
-            nsClientService.resend(reason, startNow);
+            nsClientService.resend(reason, afterMillis);
     }
 
     public UploadQueue queue() {

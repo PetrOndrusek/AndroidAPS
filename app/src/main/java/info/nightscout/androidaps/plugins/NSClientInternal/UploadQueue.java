@@ -41,6 +41,10 @@ public class UploadQueue {
     }
 
     public static void add(final DbRequest dbr) {
+        add(dbr, null);
+    }
+
+    public static void add(final DbRequest dbr, Long resendAfterMills) {
         startService();
         if (NSClientService.instance != null && NSClientService.instance.handler != null) {
             NSClientService.instance.handler.post(new Runnable() {
@@ -50,7 +54,7 @@ public class UploadQueue {
                     MainApp.getDbHelper().create(dbr);
                     NSClientPlugin plugin = NSClientPlugin.getPlugin();
                     if (plugin != null) {
-                        plugin.resend("newdata", false);
+                        plugin.resend("newdata", resendAfterMills);
                     }
                 }
             });

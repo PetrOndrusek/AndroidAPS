@@ -100,7 +100,7 @@ public class NSClientFragment extends SubscriberFragment implements View.OnClick
                 FabricPrivacy.getInstance().logCustom(new CustomEvent("NSClientRestart"));
                 break;
             case R.id.nsclientinternal_delivernow:
-                NSClientPlugin.getPlugin().resend("GUI", true);
+                NSClientPlugin.getPlugin().resend("GUI", 0L);
                 FabricPrivacy.getInstance().logCustom(new CustomEvent("NSClientDeliverNow"));
                 break;
             case R.id.nsclientinternal_clearlog:

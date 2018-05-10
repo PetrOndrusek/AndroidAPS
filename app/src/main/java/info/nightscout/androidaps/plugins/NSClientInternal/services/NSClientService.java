@@ -179,8 +179,8 @@ public class NSClientService extends Service {
     }
     */
 
-    public void resend(final String reason, boolean startNow) {
-        getTransportService().resend(reason, startNow);
+    public void resend(final String reason, Long afterMillis) {
+        getTransportService().resend(reason, afterMillis);
     }
 
     public void sendAlarmAck(AlarmAck alarmAck) {
