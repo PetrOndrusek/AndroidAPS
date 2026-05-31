@@ -11,6 +11,7 @@
     <string name="application_expired">Aplikacja wygasła</string>
     <string name="running_invalid_version">Wykryliśmy, że używasz nieprawidlowej wersji. Pętla wyłączona!</string>
     <string name="versionavailable">Wersja %1$s dostępna</string>
+    <string name="version_expire">Wersja %1$s wygasa dnia %2$s, po czym nastąpi przejście w tryb LGS</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->
     <string name="recalculated_data_used">Użyto przeliczonych wartości</string>
@@ -22,7 +23,6 @@
     <string name="limitingextendedbolus">Ograniczenie bolusa przedłużonego do %1$.1f U z powodu %2$s</string>
     <string name="limitingcarbs">Ograniczam węglow. do %1$d g z uwagi na %2$s</string>
     <string name="pumpisnottempbasalcapable">Pompa nie jest zdolna do wykonywania dawek bazowych tymczasowych</string>
-    <string name="closedmodedisabledinpreferences">Tryb zamkniętej pętli wyłączony w ustawieniach</string>
     <string name="closed_loop_disabled_on_dev_branch">Uruchomiona jest wersja dev. Zamknięta pętla jest wyłączona.</string>
     <string name="closed_loop_disabled_with_eb">Zamknięta pętla wyłączona, ponieważ działa Extended Bolus (bolus przedłużony)</string>
     <string name="smbalwaysdisabled">SMB zawsze i po węglow. wyłączone z uwagi na brak źródła BG z zaawansowanym filtrowaniem</string>
